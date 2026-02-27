@@ -8,6 +8,7 @@ from meraki_sync.db.models import Base
 
 class Organization(Base):
     __tablename__ = "organization"
+    __table_args__ = {"schema": "meraki"}
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)

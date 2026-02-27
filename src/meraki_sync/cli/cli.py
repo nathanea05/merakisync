@@ -29,8 +29,13 @@ def main() -> int:
                     print(cur)
         except MissingConfigError as e:
             print(e)
-            return 0
+            return 1
+
+
         print(dashboard)
+        return 0
+
+
     except KeyboardInterrupt:
         print("")
         quit()

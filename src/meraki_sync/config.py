@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from meraki_sync.utils import prompt
 from urllib.parse import quote_plus
 
+from sqlalchemy.engine import URL
+
 class MissingConfigError(Exception):
     """Raised when the config settings are retrieved but not found"""
 
@@ -27,6 +29,17 @@ class DbConfig:
         passwd = quote_plus(self.password)
         base = f"postgresql://{usr}:{passwd}@{self.host}:{self.port}/{self.name}"
         return base
+
+    def get_sql_alchemy_url(self) -> URL:
+        return URL.create(
+                drivername="postgresql+psycopg",
+                username=self.user,
+                password=self.password,
+                host=self.host,
+                port=self.port,
+                database=self.name,
+                )
+        
 
 
 @dataclass(frozen=True)

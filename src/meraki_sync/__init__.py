@@ -11,6 +11,7 @@ from meraki_sync.cli.init import init
 from meraki_sync.meraki.utils.get_networks import get_networks
 from meraki_sync.meraki.utils.get_organizations import get_organizations
 from meraki_sync.meraki.utils.action_batch import create_batch_action, send_action_batches
+from meraki_sync.meraki.utils.get_alerts import get_alerts
 
 # Models
 from meraki_sync.meraki.models.organization import Organization

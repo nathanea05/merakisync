@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "meraki-sync"
+name = "merakisync"
 dynamic = ["version"]
 description = ''
 readme = "README.md"
@@ -32,34 +32,34 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/Nathan Anderson/meraki-sync#readme"
-Issues = "https://github.com/Nathan Anderson/meraki-sync/issues"
-Source = "https://github.com/Nathan Anderson/meraki-sync"
+Documentation = "https://github.com/Nathan Anderson/merakisync#readme"
+Issues = "https://github.com/Nathan Anderson/merakisync/issues"
+Source = "https://github.com/Nathan Anderson/merakisync"
 
 [project.scripts]
-merakisync = "meraki_sync.cli.cli:main"
+merakisync = "merakisync.cli.cli:main"
 
 [tool.hatch.version]
-path = "src/meraki_sync/__about__.py"
+path = "src/merakisync/__about__.py"
 
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/meraki_sync tests}"
+check = "mypy --install-types --non-interactive {args:src/merakisync tests}"
 
 [tool.coverage.run]
-source_pkgs = ["meraki_sync", "tests"]
+source_pkgs = ["merakisync", "tests"]
 branch = true
 parallel = true
 omit = [
-  "src/meraki_sync/__about__.py",
+  "src/merakisync/__about__.py",
 ]
 
 [tool.coverage.paths]
-meraki_sync = ["src/meraki_sync", "*/meraki-sync/src/meraki_sync"]
-tests = ["tests", "*/meraki-sync/tests"]
+merakisync = ["src/merakisync", "*/merakisync/src/meraki_sync"]
+tests = ["tests", "*/merakisync/tests"]
 
 [tool.coverage.report]
 exclude_lines = [

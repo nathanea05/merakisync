@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import sqlalchemy
 from sqlalchemy.engine import Engine
-from meraki_sync.config import get_config
+from merakisync.config import get_config
 
 
 class DatabaseConnectionError(RuntimeError):

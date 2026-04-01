@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import ClassVar
-from meraki_sync.models.base import MerakiObj
+from merakisync.models.base import MerakiObj
 
 
 @dataclass(frozen=True, slots=True)

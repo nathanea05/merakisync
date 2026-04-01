@@ -1,5 +1,5 @@
-from meraki_sync.meraki.dashboard import get_dashboard
-from meraki_sync.meraki.models.organization import Organization
+from merakisync.meraki.dashboard import get_dashboard
+from merakisync.meraki.models.organization import Organization
 
 def sync_organization():
     dashboard = get_dashboard()

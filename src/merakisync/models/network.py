@@ -4,9 +4,9 @@ from typing import Literal, TypeVar, Type
 
 from sqlalchemy import text
 
-from meraki_sync import get_dashboard, get_engine
-from meraki_sync.models.base import MerakiObj
-from meraki_sync.utils.filter_array import filter_array
+from merakisync import get_dashboard, get_engine
+from merakisync.models.base import MerakiObj
+from merakisync.utils.filter_array import filter_array
 
 I = TypeVar("I", bound="Network")
 

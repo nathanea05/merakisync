@@ -7,7 +7,7 @@ from typing import Optional
 import meraki
 from meraki.exceptions import APIError
 
-from meraki_sync.config import get_config
+from merakisync.config import get_config
 
 
 class MerakiConnectionError(RuntimeError):

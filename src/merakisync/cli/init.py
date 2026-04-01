@@ -1,7 +1,7 @@
-from meraki_sync.config import Configuration, prompt_api_key, prompt_database, write_config, get_config, MissingConfigError, get_save_path, ConfigWriteError
-from meraki_sync.dashboard import validate_api_key, MerakiConnectionError
-from meraki_sync.utils import confirm
-from meraki_sync.db.engine import validate_connection, DatabaseConnectionError
+from merakisync.config import Configuration, prompt_api_key, prompt_database, write_config, get_config, MissingConfigError, get_save_path, ConfigWriteError
+from merakisync.dashboard import validate_api_key, MerakiConnectionError
+from merakisync.utils import confirm
+from merakisync.db.engine import validate_connection, DatabaseConnectionError
 
 def init():
     # Check if there's an existing config

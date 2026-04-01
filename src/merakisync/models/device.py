@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from typing import ClassVar, Literal, TypeVar, Type
 
 from sqlalchemy.event import api
-from meraki_sync.models.base import MerakiObj
-from meraki_sync import get_dashboard, get_engine
-from meraki_sync.utils import filter_array
+from merakisync.models.base import MerakiObj
+from merakisync import get_dashboard, get_engine
+from merakisync.utils import filter_array
 from datetime import datetime
 from sqlalchemy import text
 

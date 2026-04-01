@@ -7,7 +7,7 @@ import json
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
-from meraki_sync import get_engine
+from merakisync import get_engine
 
 _CAMEL_RE = re.compile(r'(?<!^)(?=[A-Z])')
 

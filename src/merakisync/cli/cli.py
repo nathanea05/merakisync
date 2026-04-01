@@ -1,8 +1,8 @@
 import argparse
-from meraki_sync.cli.init import init
-from meraki_sync.config import MissingConfigError
-from meraki_sync.meraki.dashboard import get_dashboard
-from meraki_sync.db.engine import get_engine
+from merakisync.cli.init import init
+from merakisync.config import MissingConfigError
+from merakisync.dashboard import get_dashboard
+from merakisync.db.engine import get_engine
 
 parser=argparse.ArgumentParser("Sync Meraki Network Configurations to a PostgreSQL Database")
 parser.add_argument("subcommand", nargs="?")
@@ -29,8 +29,6 @@ def main() -> int:
             return 1
 
 
-        from meraki_sync.sync.organization import sync_organization
-        sync_organization()
         return 0
 
     

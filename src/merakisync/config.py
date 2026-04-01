@@ -5,7 +5,7 @@ except:
 import os
 from pathlib import Path
 from dataclasses import dataclass
-from meraki_sync.utils import prompt
+from merakisync.utils import prompt
 from urllib.parse import quote_plus
 
 from sqlalchemy.engine import URL

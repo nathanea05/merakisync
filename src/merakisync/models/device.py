@@ -59,7 +59,7 @@ class Device(MerakiObj):
             filtered_devices = []
             dashboard = get_dashboard()
 
-            api_kwargs: dict[str, object] = {
+            api_kwargs: dict = {
                     "organizationId": org_id,
                     "total_pages": "all",
                     }
@@ -142,6 +142,28 @@ class Device(MerakiObj):
             if model:
                 where.append("model = :model")
                 params["model"] = model
+
+            if product_types_include:
+                model_prefixes = []
+
+                if "appliance" in product_types_include:
+                    model_prefixes.append("MX")
+
+                if "switch" in product_types_include:
+                    model_prefixes.append("MS")
+
+                if "wireless" in product_types_include:
+                    model_prefixes.append("MR")
+
+                if model_prefixes:
+                    model_clauses = []
+
+                    for i, prefix in enumerate(model_prefixes):
+                        param_name = f"model_prefix_{i}"
+                        model_clauses.append(f"model ILIKE :{param_name}")
+                        params[param_name] = f"{prefix}%"
+
+                    where.append("(" + " OR ".join(model_clauses) + ")")
 
             where_sql = " AND ".join(where) if where else "TRUE"
 

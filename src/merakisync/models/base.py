@@ -6,7 +6,7 @@ import re
 import json
 
 from sqlalchemy import text
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Engine
 from merakisync import get_engine
 
 _CAMEL_RE = re.compile(r'(?<!^)(?=[A-Z])')
@@ -120,7 +120,7 @@ class MerakiObj:
 
     def upsert(
         self,
-        conn: Connection | None = None,
+        engine: Engine | None = None,
         *,
         update_timestamp: bool = True,
     ) -> str:
@@ -130,8 +130,8 @@ class MerakiObj:
         Returns:
             "updated" or "inserted"
         """
-        if not conn:
-            conn = get_engine().connect()
+        if not engine:
+            engine = get_engine()
 
         cls = self.__class__
 
@@ -201,7 +201,8 @@ class MerakiObj:
                 **where_params,
             }
 
-            result = conn.execute(update_sql, update_params)
+            with engine.connect() as conn:
+                result = conn.execute(update_sql, update_params)
 
             if result.rowcount and result.rowcount > 0:
                 return "updated"
@@ -215,7 +216,8 @@ class MerakiObj:
                 LIMIT 1
             """)
 
-            exists = conn.execute(exists_sql, where_params).first()
+            with engine.connect() as conn:
+                exists = conn.execute(exists_sql, where_params).first()
             if exists:
                 return "updated"
 
@@ -238,5 +240,7 @@ class MerakiObj:
             VALUES ({insert_val_sql})
         """)
 
-        conn.execute(insert_sql, insert_params)
+        with engine.connect() as conn:
+            conn.execute(insert_sql, insert_params)
+            conn.commit()
         return "inserted"

@@ -14,7 +14,9 @@ from merakisync.cli.init import init
 from merakisync.models.organization import Organization
 from merakisync.models.network import Network
 from merakisync.models.device import Device
+from merakisync.models.uplink import Uplink
 from merakisync.models.alert import Alert
+from merakisync.models.dhcp_server_policy import DhcpServerPolicy
 
 
 # Exceptions

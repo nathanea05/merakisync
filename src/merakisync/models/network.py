@@ -129,12 +129,12 @@ class Network(MerakiObj):
 
     
     @classmethod
-    def sync(cls, org_id: str):
+    def sync(cls: Type[I], org_id: str) -> list[I] | None:
         results = cls.get(source="meraki", org_id=org_id)
         if not results:
-            return "Failed to retrieve data from Meraki"
+            return None
 
         for row in results:
             row.upsert()
 
-        return f"Synced {len(results)} items from Meraki"
+        return results

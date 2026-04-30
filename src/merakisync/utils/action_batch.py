@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from typing import Any, Iterable
-
+import time
+import logging
 
 MAX_ACTIONS_PER_BATCH = 100
 MAX_SYNCHRONOUS_ACTIONS = 20
+
+logger = logging.getLogger(__name__)
 
 
 def create_batch_action(
@@ -91,6 +94,8 @@ def send_action_batches(
     if not action_list:
         return []
 
+    num_batches = int(len(action_list) / 100)
+
     batch_size = MAX_SYNCHRONOUS_ACTIONS if synchronous else MAX_ACTIONS_PER_BATCH
 
     if synchronous and len(action_list) > MAX_SYNCHRONOUS_ACTIONS:
@@ -99,6 +104,7 @@ def send_action_batches(
 
     responses: list[dict[str, Any]] = []
 
+    num_batches_sent = 0
     for i in range(0, len(action_list), batch_size):
         chunk = action_list[i : i + batch_size]
 
@@ -112,6 +118,11 @@ def send_action_batches(
             raise ValueError(
                 f"Action batches cannot exceed {MAX_ACTIONS_PER_BATCH} actions"
             )
+
+        logger.info(f"Sending batch {num_batches_sent+1}/{num_batches} with {len(chunk)} action(s)")
+        num_batches_sent += 1
+
+        time.sleep(5)
 
         response = dashboard.organizations.createOrganizationActionBatch(
             organization_id,

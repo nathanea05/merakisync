@@ -82,6 +82,15 @@ class Alert(MerakiObj):
         return super().from_dashboard(flat)
 
     # ------------------------------------------------------------------
+    # Resource path
+    # ------------------------------------------------------------------
+
+    @property
+    def resource_path(self) -> str:
+        """Meraki API path for this alert. GET /organizations/{orgId}/assurance/alerts/{id}"""
+        return f"/organizations/{self.org_id}/assurance/alerts/{self.id}"
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 

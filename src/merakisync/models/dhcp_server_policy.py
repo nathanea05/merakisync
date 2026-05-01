@@ -41,6 +41,15 @@ class DhcpServerPolicy(MerakiObj):
     last_seen: datetime | None = None
 
     # ------------------------------------------------------------------
+    # Resource path
+    # ------------------------------------------------------------------
+
+    @property
+    def resource_path(self) -> str:
+        """Meraki API path for this DHCP server policy. GET /networks/{networkId}/switch/dhcpServerPolicy"""
+        return f"/networks/{self.network_id}/switch/dhcpServerPolicy"
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 

@@ -61,6 +61,22 @@ class Uplink(MerakiObj):
     last_seen: datetime | None = None
 
     # ------------------------------------------------------------------
+    # Resource path
+    # ------------------------------------------------------------------
+
+    @property
+    def resource_path(self) -> str:
+        """Closest Meraki API path for this uplink's parent device.
+
+        The Meraki API has no per-uplink GET endpoint. Uplink statuses are
+        only available at the organization level via
+        GET /organizations/{organizationId}/uplinks/statuses, which is not
+        navigable from this object (org_id is not stored). The device path
+        is the most specific navigable path available.
+        """
+        return f"/devices/{self.serial}"
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 

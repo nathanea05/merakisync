@@ -37,6 +37,15 @@ class Organization(MerakiObj):
     last_seen: datetime | None = None
 
     # ------------------------------------------------------------------
+    # Resource path
+    # ------------------------------------------------------------------
+
+    @property
+    def resource_path(self) -> str:
+        """Meraki API path for this organization. GET /organizations/{id}"""
+        return f"/organizations/{self.id}"
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 

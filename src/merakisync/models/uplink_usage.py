@@ -54,6 +54,21 @@ class UplinkUsage(MerakiObj):
     last_seen: datetime | None = None
 
     # ------------------------------------------------------------------
+    # Resource path
+    # ------------------------------------------------------------------
+
+    @property
+    def resource_path(self) -> str:
+        """Closest Meraki API path for this uplink usage record.
+
+        The Meraki API has no per-record endpoint for uplink usage. The
+        network-level endpoint below returns time-series usage for all
+        uplinks in the network; filter by serial and interface client-side.
+        GET /networks/{networkId}/appliance/uplinks/usageHistory
+        """
+        return f"/networks/{self.network_id}/appliance/uplinks/usageHistory"
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 

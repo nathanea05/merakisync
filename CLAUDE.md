@@ -208,6 +208,10 @@ class Vlan(MerakiObj):
     active_to: datetime | None = None
     last_seen: datetime | None = None
 
+    @property
+    def resource_path(self) -> str:
+        return f"/networks/{self.network_id}/appliance/vlans/{self.vlan_id}"
+
     @classmethod
     def get(cls, ..., source: Literal["database", "meraki"] = "database", ...) -> list[I]:
         ...
@@ -219,6 +223,13 @@ class Vlan(MerakiObj):
         logger.info(...)
         return rows
 ```
+
+### `resource_path` rules
+
+- Every model must implement `resource_path` as a `@property` returning a `str`.
+- Use the single-resource GET path from the Meraki API docs (e.g., `/devices/{serial}/switch/ports/{portId}`).
+- If no per-resource endpoint exists (the resource is only returned as part of a collection), return the collection endpoint and document the limitation in the docstring. See `L3FirewallRule` and `UplinkUsage`.
+- If the resource requires a parent ID not stored on the model, return the closest navigable path from available fields and document the constraint. See `Uplink`.
 
 ### `get()` rules
 

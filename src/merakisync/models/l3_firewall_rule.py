@@ -64,6 +64,21 @@ class L3FirewallRule(MerakiObj):
     last_seen: datetime | None = None
 
     # ------------------------------------------------------------------
+    # Resource path
+    # ------------------------------------------------------------------
+
+    @property
+    def resource_path(self) -> str:
+        """Closest Meraki API path for this firewall rule's parent collection.
+
+        The Meraki API has no per-rule endpoint. Rules are only accessible
+        as an ordered list for the whole network. To read or update rules,
+        use the collection endpoint below and filter by rule_order client-side.
+        GET /networks/{networkId}/appliance/firewall/l3FirewallRules
+        """
+        return f"/networks/{self.network_id}/appliance/firewall/l3FirewallRules"
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 

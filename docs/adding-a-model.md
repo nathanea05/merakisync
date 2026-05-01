@@ -112,7 +112,25 @@ List fields in this order:
 - Do not try to model the internal structure of complex nested objects — store them as `dict` or `list` and let callers parse them if needed.
 - Fields that the API always returns should not have `= None`. Fields that may be absent or null should have `= None`.
 
-### 2c. Custom from_dashboard (only if needed)
+### 2c. Implement resource_path
+
+Every model must implement a `resource_path` property that returns the Meraki API path for this specific resource instance. This is used by callers to construct API calls without hardcoding paths.
+
+```python
+    @property
+    def resource_path(self) -> str:
+        """Meraki API path for this VLAN. GET /networks/{networkId}/appliance/vlans/{vlanId}"""
+        return f"/networks/{self.network_id}/appliance/vlans/{self.vlan_id}"
+```
+
+**Rules:**
+
+- Use the single-resource GET path from the [Meraki API docs](https://developer.cisco.com/meraki/api-v1/) — e.g., `/devices/{serial}/switch/ports/{portId}`, not the list endpoint.
+- If no per-resource endpoint exists (the resource is only accessible as part of a collection), return the collection endpoint path and document the limitation in the docstring. See `L3FirewallRule` and `UplinkUsage` for examples.
+- If the resource requires a parent ID that is not stored on the model (e.g., `org_id`), return the closest navigable path using the fields that are available and document the constraint. See `Uplink` for an example.
+- Keep the docstring to one line: the HTTP method and full path template.
+
+### 2d. Custom from_dashboard (only if needed)
 
 Only override `from_dashboard` if the API response contains **nested objects that must be flattened** before the base class can map them. The base class handles flat dicts automatically.
 
@@ -409,6 +427,7 @@ Use this to verify you have not missed anything before committing.
     [ ] __versioned__ = False added if this is a metric table
     [ ] All PK fields listed first and not Optional
     [ ] All SCD2 models have active_from, active_to, last_seen fields
+    [ ] resource_path property implemented (single-resource path, or collection path with docstring note)
     [ ] get() imports get_dashboard / get_engine inside the if-branch
     [ ] get() returns list[I], not list[I] | None
     [ ] sync() uses upsert_many(), not upsert() in a loop

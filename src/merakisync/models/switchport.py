@@ -84,6 +84,15 @@ class Switchport(MerakiObj):
     last_seen: datetime | None = None
 
     # ------------------------------------------------------------------
+    # Resource path
+    # ------------------------------------------------------------------
+
+    @property
+    def resource_path(self) -> str:
+        """Meraki API path for this switchport. GET /devices/{serial}/switch/ports/{portId}"""
+        return f"/devices/{self.serial}/switch/ports/{self.port_id}"
+
+    # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
 

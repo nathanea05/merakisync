@@ -18,7 +18,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE SCHEMA IF NOT EXISTS meraki")
+    # The meraki schema is created by the PostgreSQL setup step (README)
+    # and owned by a superuser. The merakisync app user does not have
+    # database-level CREATE privilege, so schema creation must not run here.
 
     # ------------------------------------------------------------------
     # organization

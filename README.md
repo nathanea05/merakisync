@@ -45,7 +45,11 @@ pip install -e .
 
 ## PostgreSQL Setup
 
-merakisync stores all data in a dedicated schema named `meraki`. Run the following SQL as a PostgreSQL superuser before proceeding.
+merakisync stores all data in a dedicated schema named `meraki`. The setup requires two separate database connections, so the steps below are split accordingly. Run all commands as a PostgreSQL superuser.
+
+> **Homebrew on macOS:** A fresh Homebrew install does not create a database matching your system username. Always specify a database explicitly when connecting: `psql -d postgres`
+
+### Part 1 — connect to `postgres` and run as superuser
 
 ```sql
 -- 1. Create the database (skip if using an existing one)
@@ -53,9 +57,14 @@ CREATE DATABASE merakisync;
 
 -- 2. Create a dedicated user
 CREATE USER merakisync WITH PASSWORD 'your_password_here';
+```
 
+### Part 2 — connect to `merakisync` and run as superuser
+
+Disconnect from `postgres` and reconnect to the `merakisync` database before running these statements. In psql, type `\c merakisync`. In a GUI client such as VS Code SQLTools or DBeaver, close the current connection and open a new one targeting the `merakisync` database.
+
+```sql
 -- 3. Create the schema and grant ownership
-\c merakisync
 CREATE SCHEMA IF NOT EXISTS meraki AUTHORIZATION merakisync;
 
 -- 4. Grant privileges on the schema

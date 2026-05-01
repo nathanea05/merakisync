@@ -21,7 +21,7 @@ class DashboardDefaults:
     print_console: bool = False
     output_log: bool = False
     wait_on_rate_limit: bool = True
-    maximum_retries: int = 10
+    maximum_retries: int = 20
 
 
 DEFAULTS = DashboardDefaults()

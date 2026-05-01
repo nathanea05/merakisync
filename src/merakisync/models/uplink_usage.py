@@ -28,10 +28,10 @@ class UplinkUsage(MerakiObj):
       last sync.  On each sync run the existing record is overwritten with the
       latest cumulative total — SCD2 versioning is not appropriate here because
       this is a rolling metric, not a configuration state.
-    - The Meraki API supports a maximum lookback of 30 days when using t0/t1.
-      For months that began more than 30 days ago the first few days will not
-      be accessible via the API; only the current and recent months should be
-      considered reliable.
+    - The Meraki API allows t0 up to 30 days ago but t1 can be at most 14 days
+      after t0.  For months that started more than 14 days ago only a partial
+      window is captured per sync run; only the current month should be
+      considered a complete total.
     - __versioned__ = False causes the base class to use a simple
       INSERT … ON CONFLICT DO UPDATE instead of SCD2 logic.
     """
@@ -107,17 +107,13 @@ class UplinkUsage(MerakiObj):
             from merakisync.dashboard import get_dashboard
             dashboard = get_dashboard()
 
-            month_start = datetime(year, month, 1, tzinfo=timezone.utc)
-            # Clamp t0 to 30-day lookback limit
-            lookback_limit = now.replace(
-                hour=now.hour, minute=now.minute, second=now.second, microsecond=0
-            )
             from datetime import timedelta
-            thirty_days_ago = now - timedelta(days=30)
-            t0 = max(month_start, thirty_days_ago)
-            t1 = now
+            month_start = datetime(year, month, 1, tzinfo=timezone.utc)
+            # t0 lookback limit: 30 days. t1 limit: t0 + 14 days (API constraint).
+            t0 = max(month_start, now - timedelta(days=30))
+            t1 = min(now, t0 + timedelta(days=14))
 
-            response = dashboard.organizations.getOrganizationApplianceUplinksUsageByNetwork(
+            response = dashboard.appliance.getOrganizationApplianceUplinksUsageByNetwork(
                 org_id,
                 t0=t0.isoformat(),
                 t1=t1.isoformat(),

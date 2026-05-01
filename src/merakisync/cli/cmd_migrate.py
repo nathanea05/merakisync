@@ -22,6 +22,10 @@ def run(revision: str = "head") -> None:
             pkg_resources.files(merakisync).parent.parent / "alembic.ini"
         )
         alembic_cfg = AlembicConfig(alembic_ini)
+        # Override script_location with an absolute path so migrations work
+        # regardless of the current working directory.
+        migrations_dir = str(pkg_resources.files(merakisync) / "migrations")
+        alembic_cfg.set_main_option("script_location", migrations_dir)
         command.upgrade(alembic_cfg, revision)
         logger.info("Migrations applied to revision: %s", revision)
     except Exception as exc:

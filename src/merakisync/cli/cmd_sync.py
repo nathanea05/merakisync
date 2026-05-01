@@ -145,7 +145,7 @@ def run(flags: SyncFlags | None = None) -> None:
             logger.info("  Syncing switchports for org %s...", org_id)
             switch_devices = Device.get(
                 org_id,
-                source="meraki",
+                source="database",
                 product_types_include=["switch"],
             )
             if not switch_devices:

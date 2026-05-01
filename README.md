@@ -36,7 +36,7 @@ pip install merakisync
 To install from source:
 
 ```bash
-git clone https://github.com/Nathan Anderson/merakisync
+git clone https://github.com/nathanea05/merakisync
 cd merakisync
 pip install -e .
 ```

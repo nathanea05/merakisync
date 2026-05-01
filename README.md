@@ -151,6 +151,7 @@ merakisync sync --uplink-usage
 merakisync sync --dhcp-server-policy
 merakisync sync --alerts
 merakisync sync --l3-firewall-rules
+merakisync sync --vlans
 ```
 
 Flags can be combined. For example, to sync only networks and devices:
@@ -318,6 +319,7 @@ Environment variables take precedence over values in the config file.
 | DhcpServerPolicy | `meraki.dhcp_server_policy` | Per-network | Switch networks only |
 | Alert | `meraki.alert` | Per-org | Assurance alerts |
 | L3FirewallRule | `meraki.l3_firewall_rule` | Per-network | MX appliance networks |
+| Vlan | `meraki.vlan` | Per-network | MX appliance networks |
 
 All resources except `UplinkUsage` use SCD2 versioning — historical state is preserved when data changes. `UplinkUsage` stores cumulative monthly byte totals and updates in place.
 

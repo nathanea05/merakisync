@@ -19,6 +19,7 @@ class SyncFlags:
     dhcp_server_policy: bool = False
     alerts: bool = False
     l3_firewall_rules: bool = False
+    vlans: bool = False
 
     @property
     def sync_all(self) -> bool:
@@ -47,6 +48,7 @@ def run(flags: SyncFlags | None = None) -> None:
     from merakisync.models.dhcp_server_policy import DhcpServerPolicy
     from merakisync.models.alert import Alert
     from merakisync.models.l3_firewall_rule import L3FirewallRule
+    from merakisync.models.vlan import Vlan
 
     do_all = flags.sync_all
 
@@ -137,6 +139,13 @@ def run(flags: SyncFlags | None = None) -> None:
             if (do_all or flags.l3_firewall_rules) and "appliance" in product_types:
                 logger.debug("    Syncing L3 firewall rules for network %s...", net_id)
                 L3FirewallRule.sync(net_id)
+
+            # ----------------------------------------------------------
+            # VLANs  (appliance networks only)
+            # ----------------------------------------------------------
+            if (do_all or flags.vlans) and "appliance" in product_types:
+                logger.debug("    Syncing VLANs for network %s...", net_id)
+                Vlan.sync(net_id)
 
         # --------------------------------------------------------------
         # Switchports  (per switch device)

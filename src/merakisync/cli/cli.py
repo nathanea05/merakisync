@@ -93,6 +93,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--l3-firewall-rules", action="store_true", dest="l3_firewall_rules",
         help="Sync MX L3 firewall rules."
     )
+    sync_parser.add_argument(
+        "--vlans", action="store_true", help="Sync MX appliance VLANs."
+    )
 
     return parser
 
@@ -143,6 +146,7 @@ def main() -> None:
             dhcp_server_policy=args.dhcp_server_policy,
             alerts=args.alerts,
             l3_firewall_rules=args.l3_firewall_rules,
+            vlans=args.vlans,
         )
         run(flags)
         return

@@ -7,6 +7,7 @@ from merakisync.models.uplink_usage import UplinkUsage
 from merakisync.models.dhcp_server_policy import DhcpServerPolicy
 from merakisync.models.alert import Alert
 from merakisync.models.l3_firewall_rule import L3FirewallRule
+from merakisync.models.vlan import Vlan
 
 __all__ = [
     "Organization",
@@ -18,4 +19,5 @@ __all__ = [
     "DhcpServerPolicy",
     "Alert",
     "L3FirewallRule",
+    "Vlan",
 ]

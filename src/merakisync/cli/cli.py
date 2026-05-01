@@ -6,13 +6,27 @@ import sys
 from merakisync.cli.cmd_sync import SyncFlags
 
 
+def _add_log_flags(p: argparse.ArgumentParser) -> None:
+    """Add --verbose/--quiet to a subparser without overriding the parent value."""
+    g = p.add_mutually_exclusive_group()
+    g.add_argument(
+        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS,
+        help="Enable debug logging.",
+    )
+    g.add_argument(
+        "-q", "--quiet", action="store_true", default=argparse.SUPPRESS,
+        help="Suppress all output below WARNING.",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="merakisync",
         description="Sync Meraki Dashboard data into PostgreSQL.",
     )
 
-    # Global options
+    # Global log-level flags — also added to each subcommand below so they
+    # can appear either before or after the subcommand name.
     log_group = parser.add_mutually_exclusive_group()
     log_group.add_argument(
         "-v", "--verbose", action="store_true", help="Enable debug logging."
@@ -24,10 +38,11 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     # init
-    subparsers.add_parser(
+    init_parser = subparsers.add_parser(
         "init",
         help="Configure the Meraki API key and database connection.",
     )
+    _add_log_flags(init_parser)
 
     # migrate
     migrate_parser = subparsers.add_parser(
@@ -40,12 +55,14 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="REV",
         help="Alembic revision target (default: head).",
     )
+    _add_log_flags(migrate_parser)
 
     # sync
     sync_parser = subparsers.add_parser(
         "sync",
         help="Sync Meraki data into the database.",
     )
+    _add_log_flags(sync_parser)
     sync_parser.add_argument(
         "-o", "--organizations", action="store_true", help="Sync organizations."
     )

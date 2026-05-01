@@ -34,8 +34,8 @@ dev = [
 ]
 
 [project.urls]
-Source = "https://github.com/Nathan Anderson/merakisync"
-Issues = "https://github.com/Nathan Anderson/merakisync/issues"
+Source = "https://github.com/nathanea05/merakisync"
+Issues = "https://github.com/nathanea05/merakisync/issues"
 
 [project.scripts]
 merakisync = "merakisync.cli.cli:main"

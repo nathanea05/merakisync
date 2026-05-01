@@ -94,19 +94,9 @@ def run() -> None:
 def _run_migrations() -> None:
     """Invoke Alembic migrations programmatically."""
     try:
-        from alembic import command
-        from alembic.config import Config as AlembicConfig
-
-        import importlib.resources as pkg_resources
-        import merakisync
-
-        # Locate alembic.ini relative to the installed package
-        alembic_ini = str(
-            pkg_resources.files(merakisync).parent.parent / "alembic.ini"
-        )
-        alembic_cfg = AlembicConfig(alembic_ini)
-        command.upgrade(alembic_cfg, "head")
+        from merakisync.cli.cmd_migrate import run as migrate_run
+        migrate_run()
         print("OK  Migrations applied.")
-    except Exception as exc:
-        print(f"FAIL  Migration failed: {exc}")
+    except SystemExit:
+        print("FAIL  Migration failed.")
         print("      Run `merakisync migrate` manually to retry.")

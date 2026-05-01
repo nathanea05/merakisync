@@ -1,89 +1,113 @@
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
-from typing import ClassVar, Literal, TypeVar, Type
-from merakisync.models.base import MerakiObj
-from merakisync import get_dashboard, get_engine
 from datetime import datetime
+from typing import ClassVar, Literal, Type, TypeVar
+
 from sqlalchemy import text
+
+from merakisync.models.base import MerakiObj
+
+logger = logging.getLogger(__name__)
 
 I = TypeVar("I", bound="Organization")
 
+
 @dataclass(frozen=True, slots=True)
 class Organization(MerakiObj):
-    __table_name__ = "organization"
+    """Meraki Organization — maps to meraki.organization."""
+
+    __table_name__: ClassVar[str] = "organization"
     __pk__: ClassVar[tuple[str, ...]] = ("id",)
     __mapping_override__: ClassVar[dict[str, str]] = {}
 
+    # Business fields
     id: str
     name: str
     url: str
-    api: dict
-    licensing: dict
-    cloud: dict
-    management: dict
+    api: dict | None = None
+    licensing: dict | None = None
+    cloud: dict | None = None
+    management: dict | None = None
 
+    # SCD2 versioning
+    active_from: datetime | None = None
+    active_to: datetime | None = None
+    last_seen: datetime | None = None
+
+    # ------------------------------------------------------------------
+    # Retrieval
+    # ------------------------------------------------------------------
 
     @classmethod
-    def get(cls: Type[I],
-            source: Literal["database", "meraki"] = "database",
-            name: str = "",
-            ts: datetime | Literal["all"] | None = None
-            ) -> list[I] | None:
-        """Retrieves all organizations"""
-        
-        name = name.strip().lower()
-        if ts and source == "meraki":
-            raise ValueError("Cannot perform timestamped lookups when source is Meraki. Use source database instead.")
+    def get(
+        cls: Type[I],
+        source: Literal["database", "meraki"] = "database",
+        *,
+        name: str = "",
+        ts: datetime | Literal["all"] | None = None,
+    ) -> list[I]:
+        """Retrieve organizations from Meraki Dashboard or the database.
 
+        Args:
+            source:  "meraki" or "database".
+            name:    Optional name filter (case-insensitive).
+            ts:      Timestamp filter for DB queries.
+                     None  → current rows only (active_to IS NULL).
+                     "all" → all versions.
+                     datetime → rows active at that point in time.
+        """
+        if ts and source == "meraki":
+            raise ValueError("Timestamp lookups require source='database'.")
 
         if source == "meraki":
-            organizations = []
+            from merakisync.dashboard import get_dashboard
             dashboard = get_dashboard()
             results = dashboard.organizations.getOrganizations()
-            for row in results:
-                org = cls.from_dashboard(row)
-                if name and org.name.strip().lower() != name:
-                    continue
-                organizations.append(org)
-            return organizations
+            orgs = [cls.from_dashboard(r) for r in results]
+            if name:
+                needle = name.strip().lower()
+                orgs = [o for o in orgs if o.name.strip().lower() == needle]
+            return orgs
 
-
-        elif source == "database":
+        if source == "database":
+            from merakisync.database import get_engine
             engine = get_engine()
-
-            where = []
-            params = {}
+            where: list[str] = []
+            params: dict = {}
 
             if ts and ts != "all":
-                where.append("active_from <= :ts")
-                where.append("(active_to > :ts OR active_to IS NULL)")
+                where += ["active_from <= :ts", "(active_to > :ts OR active_to IS NULL)"]
                 params["ts"] = ts
             elif ts != "all":
                 where.append("active_to IS NULL")
 
-            where_sql = " AND ".join(where) if where else "TRUE"
+            if name:
+                where.append("name ILIKE :name")
+                params["name"] = f"%{name}%"
 
-            sql = text(f"""
-                SELECT *
-                FROM {cls.__schema__}.{cls.__table_name__}
-                WHERE {where_sql}
-            """)
+            where_sql = " AND ".join(where) if where else "TRUE"
+            sql = text(f"SELECT * FROM {cls._qualified()} WHERE {where_sql}")
 
             with engine.connect() as conn:
-                results = conn.execute(sql, params).mappings().all()
-                return [cls.from_row(row) for row in results]
+                rows = conn.execute(sql, params).mappings().all()
+            return [cls.from_row(r) for r in rows]
 
-        else:
-            raise ValueError(f"Invalid source '{source}'. Must be one of: ['database', 'meraki']")
+        raise ValueError(f"Invalid source '{source}'. Must be 'database' or 'meraki'.")
 
+    # ------------------------------------------------------------------
+    # Sync
+    # ------------------------------------------------------------------
 
     @classmethod
-    def sync(cls: Type[I]) -> list[I] | None:
-        """Syncs all organizations from Meraki into the database"""
+    def sync(cls: Type[I]) -> list[I]:
+        """Fetch all organizations from Meraki and upsert into the database."""
         orgs = cls.get(source="meraki")
         if not orgs:
+            logger.warning("No organizations returned from Meraki.")
             return []
 
-        for org in orgs:
-            org.upsert()
-
+        counts = cls.upsert_many(orgs)
+        logger.info("Organizations synced: %s", counts)
         return orgs

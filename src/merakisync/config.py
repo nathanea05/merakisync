@@ -1,20 +1,21 @@
-try:
-    import tomllib
-except:
-    import tomli as tomllib
+from __future__ import annotations
+
 import os
-from pathlib import Path
+import tomllib
 from dataclasses import dataclass
-from merakisync.utils import prompt
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from sqlalchemy.engine import URL
 
-class MissingConfigError(Exception):
-    """Raised when the config settings are retrieved but not found"""
+from merakisync.exceptions import ConfigWriteError, MissingConfigError
+from merakisync.utils.confirm import confirm
+from merakisync.utils.prompt import prompt
 
-class ConfigWriteError(RuntimeError):
-    """Raised when a config fails to write, usually due to permission or os errors"""
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class DbConfig:
@@ -27,19 +28,17 @@ class DbConfig:
     def get_dsn(self) -> str:
         usr = quote_plus(self.user)
         passwd = quote_plus(self.password)
-        base = f"postgresql://{usr}:{passwd}@{self.host}:{self.port}/{self.name}"
-        return base
+        return f"postgresql://{usr}:{passwd}@{self.host}:{self.port}/{self.name}"
 
-    def get_sql_alchemy_url(self) -> URL:
+    def get_sqlalchemy_url(self) -> URL:
         return URL.create(
-                drivername="postgresql+psycopg",
-                username=self.user,
-                password=self.password,
-                host=self.host,
-                port=self.port,
-                database=self.name,
-                )
-        
+            drivername="postgresql+psycopg2",
+            username=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port,
+            database=self.name,
+        )
 
 
 @dataclass(frozen=True)
@@ -47,39 +46,152 @@ class Configuration:
     meraki_api_key: str
     db: DbConfig
 
-
     @classmethod
-    def from_parts(cls, api_key: str, db: DbConfig) -> "Configuration":
+    def from_parts(cls, api_key: str, db: DbConfig) -> Configuration:
         api_key = api_key.strip()
         if not api_key:
             raise ValueError("Meraki API key cannot be empty")
         return cls(meraki_api_key=api_key, db=db)
 
     @classmethod
-    def from_toml(cls, data) -> "Configuration":
+    def from_toml(cls, data: dict) -> Configuration:
         api_key = data["meraki"]["api_key"]
-        db_host = data["database"]["host"]
-        db_port = data["database"]["port"]
-        db_name = data["database"]["name"]
-        db_user = data["database"]["user"]
-        db_password = data["database"]["password"]
-        if not api_key:
-            raise ValueError("Meraki API Key cannot be empty")
+        d = data["database"]
         db = DbConfig(
-                host=db_host,
-                port=db_port,
-                name=db_name,
-                user=db_user,
-                password=db_password,
-                )
+            host=d["host"],
+            port=int(d["port"]),
+            name=d["name"],
+            user=d["user"],
+            password=d["password"],
+        )
+        if not api_key:
+            raise ValueError("Meraki API key cannot be empty")
         return cls(meraki_api_key=api_key, db=db)
 
 
-# Read user input
+# ---------------------------------------------------------------------------
+# Path resolution
+# ---------------------------------------------------------------------------
+
+def get_save_path() -> Path:
+    """Return the platform-appropriate config file path."""
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return Path("/etc/merakisync/config.toml")
+    xdg = os.getenv("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "merakisync" / "config.toml"
+    return Path.home() / ".config" / "merakisync" / "config.toml"
+
+
+# ---------------------------------------------------------------------------
+# Read
+# ---------------------------------------------------------------------------
+
+def get_config() -> Configuration:
+    """Load configuration from the TOML file, then overlay any env vars set.
+
+    Environment variable overrides (all optional):
+        MERAKI_API_KEY
+        MERAKISYNC_DB_HOST
+        MERAKISYNC_DB_PORT
+        MERAKISYNC_DB_NAME
+        MERAKISYNC_DB_USER
+        MERAKISYNC_DB_PASSWORD
+
+    Raises:
+        MissingConfigError: if the config file is absent and env vars do not
+            provide a complete configuration.
+    """
+    path = get_save_path()
+
+    if path.exists():
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        conf = Configuration.from_toml(data)
+        api_key: str = conf.meraki_api_key
+        db: DbConfig | None = conf.db
+    else:
+        api_key = ""
+        db = None
+
+    # Overlay env vars over file values
+    api_key = os.getenv("MERAKI_API_KEY", api_key).strip()
+
+    if db is not None:
+        db = DbConfig(
+            host=os.getenv("MERAKISYNC_DB_HOST", db.host),
+            port=int(os.getenv("MERAKISYNC_DB_PORT", str(db.port))),
+            name=os.getenv("MERAKISYNC_DB_NAME", db.name),
+            user=os.getenv("MERAKISYNC_DB_USER", db.user),
+            password=os.getenv("MERAKISYNC_DB_PASSWORD", db.password),
+        )
+    else:
+        # No file — attempt to build entirely from env vars
+        host = os.getenv("MERAKISYNC_DB_HOST", "")
+        port_str = os.getenv("MERAKISYNC_DB_PORT", "5432")
+        name = os.getenv("MERAKISYNC_DB_NAME", "")
+        user = os.getenv("MERAKISYNC_DB_USER", "")
+        password = os.getenv("MERAKISYNC_DB_PASSWORD", "")
+        if host and name and user and password:
+            db = DbConfig(host=host, port=int(port_str), name=name, user=user, password=password)
+        else:
+            raise MissingConfigError(
+                "No configuration found. Run `merakisync init` or set the "
+                "MERAKI_API_KEY and MERAKISYNC_DB_* environment variables."
+            )
+
+    if not api_key:
+        raise MissingConfigError(
+            "Meraki API key is missing. Run `merakisync init` or set MERAKI_API_KEY."
+        )
+
+    return Configuration(meraki_api_key=api_key, db=db)
+
+
+# ---------------------------------------------------------------------------
+# Write
+# ---------------------------------------------------------------------------
+
+def write_config(path: Path, *, conf: Configuration) -> None:
+    """Write configuration to *path* as TOML with mode 0600.
+
+    Raises:
+        ConfigWriteError: on permission or OS errors.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # port is written as an integer (no quotes) so tomllib reads it back as int
+        content = (
+            "[meraki]\n"
+            f'api_key = "{conf.meraki_api_key}"\n\n'
+            "[database]\n"
+            f'host = "{conf.db.host}"\n'
+            f"port = {conf.db.port}\n"
+            f'name = "{conf.db.name}"\n'
+            f'user = "{conf.db.user}"\n'
+            f'password = "{conf.db.password}"\n'
+        )
+        path.write_text(content, encoding="utf-8")
+        path.chmod(0o600)
+    except PermissionError as exc:
+        raise ConfigWriteError(
+            f"Permission denied writing config to {path}. Try running with sudo."
+        ) from exc
+    except OSError as exc:
+        raise ConfigWriteError(f"Failed to write config to {path}: {exc}") from exc
+
+    if not path.exists():
+        raise ConfigWriteError(
+            f"Config write appeared to succeed but {path} does not exist."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Interactive prompts  (used by `merakisync init`)
+# ---------------------------------------------------------------------------
+
 def prompt_api_key() -> str:
-    """Prompt the User to Enter Their Meraki API Key"""
-    api_key = prompt("Meraki API Key (input hidden) [required]: ", hidden=True, required=True)
-    return api_key
+    return prompt("Meraki API Key (input hidden) [required]: ", hidden=True, required=True)
 
 
 def prompt_database() -> DbConfig:
@@ -88,75 +200,4 @@ def prompt_database() -> DbConfig:
     name = prompt("Database name [meraki]: ") or "meraki"
     user = prompt("Database username [merakisync]: ") or "merakisync"
     password = prompt("Database password (input hidden) [required]: ", hidden=True, required=True)
-    
-    return DbConfig(
-            host=host,
-            port=port,
-            name=name,
-            user=user,
-            password=password
-            )
-
-
-# Write to file
-def get_save_path() -> Path:
-    # Prefer /etc if root, else user config
-    if hasattr(os, "geteuid") and os.geteuid() == 0:
-        return Path("/etc/meraki-sync/config.toml")
-    xdg = os.getenv("XDG_CONFIG_HOME")
-    if xdg:
-        return Path(xdg) / "meraki-sync" / "config.toml"
-    return Path.home() / ".config" / "meraki-sync" / "config.toml"
-
-
-def write_config(path: Path, *, conf: Configuration) -> None:
-    """
-    Writes the config to ~/.config/merakisync/config.toml if run as a standard user.
-    Writes to etc/merakisync/config.toml if run with sudo.
-
-    Raises ConfigWriteError on failure.
-    """
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        content = (
-            "[meraki]\n"
-            f'api_key = "{conf.meraki_api_key}"\n\n'
-            "[database]\n"
-            f'host = "{conf.db.host}"\n'
-            f'port = "{conf.db.port}"\n'
-            f'name = "{conf.db.name}"\n'       
-            f'user = "{conf.db.user}"\n'       
-            f'password = "{conf.db.password}"\n'       
-        )
-        path.write_text(content, encoding="utf-8")
-        path.chmod(0o600)
-    except PermissionError as e:
-        raise ConfigWriteError(
-                f"Permission denied writing config to {path}. Try running with sudo."
-                ) from e
-
-    except OSError as e:
-        raise ConfigWriteError(
-                f"Failed to write config to {path}: {e}"
-                ) from e
-
-    if not path.exists():
-        raise ConfigWriteError(
-                f"Failed to write config to {path}: Path does not exist"
-                )
-
-
-# Read from file
-def get_config() -> Configuration:
-    """Attempts to read the config file and return details as a dict. Raises MissingConfigError if config file or details are missing."""
-    path = get_save_path()
-
-    # Ensure config file exists
-    if not path.exists():
-        raise MissingConfigError("Mission configuration. Try running `merakisync init`")
-
-    # Read Config and return
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
-        conf = Configuration.from_toml(data)
-    return conf
+    return DbConfig(host=host, port=int(port), name=name, user=user, password=password)

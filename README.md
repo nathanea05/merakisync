@@ -1,57 +1,319 @@
-# meraki-sync
+# merakisync
 
-[![PyPI - Version](https://img.shields.io/pypi/v/meraki-sync.svg)](https://pypi.org/project/meraki-sync)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/meraki-sync.svg)](https://pypi.org/project/meraki-sync)
+Sync Meraki Dashboard data into PostgreSQL and retrieve typed Python objects — without configuring API or database connectivity in every script.
 
------
+---
 
 ## Table of Contents
 
+- [Requirements](#requirements)
 - [Installation](#installation)
+- [PostgreSQL Setup](#postgresql-setup)
+- [Configuration](#configuration)
+- [Running Migrations](#running-migrations)
+- [Syncing Data](#syncing-data)
+- [Using the Library](#using-the-library)
+- [Environment Variables](#environment-variables)
+- [Supported Resources](#supported-resources)
 - [License](#license)
+
+---
+
+## Requirements
+
+- Python 3.11 or later
+- PostgreSQL 13 or later
+- A Meraki Dashboard API key ([how to generate one](https://documentation.meraki.com/General_Administration/Other_Topics/Cisco_Meraki_Dashboard_API#Enable_API_Access))
+
+---
 
 ## Installation
 
-```console
+```bash
 pip install merakisync
 ```
 
-## License
+To install from source:
 
-`meraki-sync` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
+```bash
+git clone https://github.com/Nathan Anderson/merakisync
+cd merakisync
+pip install -e .
+```
 
+---
 
-# Database Setup
-1. Make sure you have postgres installed on a host that is reachable on the network
-2. If the database is remote (not on localhost), adjust pg_hba to allow remote connections
-3. Create database `merakisync` (This can be customized, but remember the name for when you run merakisync init)
-4. Create schema meraki and authorize merakisync
+## PostgreSQL Setup
 
+merakisync stores all data in a dedicated schema named `meraki`. Run the following SQL as a PostgreSQL superuser before proceeding.
 
-# Create Database
-CREATE DATABASE meraki;
+```sql
+-- 1. Create the database (skip if using an existing one)
+CREATE DATABASE merakisync;
 
-# Create User
-CREATE USER merakisync WITH PASSWORD 'password';
+-- 2. Create a dedicated user
+CREATE USER merakisync WITH PASSWORD 'your_password_here';
 
-# Create Schema
--- Create schema
+-- 3. Create the schema and grant ownership
+\c merakisync
 CREATE SCHEMA IF NOT EXISTS meraki AUTHORIZATION merakisync;
 
--- Allow using/creating objects in schema
+-- 4. Grant privileges on the schema
 GRANT USAGE, CREATE ON SCHEMA meraki TO merakisync;
 
--- If tables already exist:
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA meraki TO merakisync;
-GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA meraki TO merakisync;
-
--- Ensure future tables/sequences created by migrations are usable:
+-- 5. Grant privileges on future tables and sequences created by migrations
 ALTER DEFAULT PRIVILEGES IN SCHEMA meraki
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO merakisync;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO merakisync;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA meraki
-GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO merakisync;
+    GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO merakisync;
 
--- Make meraki the default schema for this role in this database
-ALTER ROLE merakisync IN DATABASE pacs_engineering
-SET search_path = meraki, public;
+-- 6. Set the default search path for this user
+ALTER ROLE merakisync IN DATABASE merakisync
+    SET search_path = meraki, public;
+```
+
+> **Remote databases:** If PostgreSQL is not on localhost, update `pg_hba.conf` to allow connections from the host running merakisync and reload the service (`pg_ctlcluster reload` or `systemctl reload postgresql`).
+
+---
+
+## Configuration
+
+Run the interactive setup wizard:
+
+```bash
+merakisync init
+```
+
+The wizard will:
+
+1. Prompt for your Meraki API key and validate it against the Dashboard.
+2. Prompt for PostgreSQL connection details and test the connection.
+3. Offer to apply database migrations immediately.
+4. Save the configuration to `~/.config/merakisync/config.toml` (mode `600`).
+
+> **Running as root:** Configuration is saved to `/etc/merakisync/config.toml` instead, which is appropriate for system-wide deployments or scheduled jobs running under a service account.
+
+The configuration file looks like this:
+
+```toml
+[meraki]
+api_key = "your_meraki_api_key"
+
+[database]
+host = "localhost"
+port = 5432
+name = "merakisync"
+user = "merakisync"
+password = "your_password_here"
+```
+
+---
+
+## Running Migrations
+
+Apply the database schema (creates all tables in the `meraki` schema):
+
+```bash
+merakisync migrate
+```
+
+This runs Alembic migrations up to the latest revision. It is safe to run multiple times — Alembic only applies revisions that have not already been applied.
+
+---
+
+## Syncing Data
+
+### Sync everything
+
+```bash
+merakisync sync
+```
+
+### Sync specific resource types
+
+```bash
+merakisync sync --organizations        # or -o
+merakisync sync --networks             # or -n
+merakisync sync --devices              # or -d
+merakisync sync --switchports
+merakisync sync --uplinks
+merakisync sync --uplink-usage
+merakisync sync --dhcp-server-policy
+merakisync sync --alerts
+merakisync sync --l3-firewall-rules
+```
+
+Flags can be combined. For example, to sync only networks and devices:
+
+```bash
+merakisync sync -n -d
+```
+
+### Logging
+
+By default, merakisync logs at INFO level to stdout, which works well with cron and systemd.
+
+```bash
+merakisync sync --verbose    # DEBUG level
+merakisync sync --quiet      # WARNING level and above only
+```
+
+Output is plain text with no colour codes, making it safe to redirect or capture in log files.
+
+### Scheduling with cron
+
+```cron
+# Sync all data every hour
+0 * * * * /usr/local/bin/merakisync sync >> /var/log/merakisync.log 2>&1
+```
+
+### Scheduling with systemd
+
+Create `/etc/systemd/system/merakisync.service`:
+
+```ini
+[Unit]
+Description=merakisync — sync Meraki data to PostgreSQL
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/merakisync sync
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Create `/etc/systemd/system/merakisync.timer`:
+
+```ini
+[Unit]
+Description=Run merakisync every hour
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl enable --now merakisync.timer
+```
+
+---
+
+## Using the Library
+
+Once data has been synced, you can retrieve typed Python objects in any script without configuring API or database credentials again.
+
+```python
+from merakisync import Organization, Network, Device, Uplink, Switchport
+
+# Retrieve from the database (default)
+orgs = Organization.get(source="database")
+
+networks = Network.get(org_id="123456", source="database")
+
+# Filter by product type
+switch_networks = Network.get(
+    org_id="123456",
+    source="database",
+    product_types_include=["switch"],
+)
+
+# Retrieve directly from the Meraki Dashboard API
+devices = Device.get(org_id="123456", source="meraki")
+
+# Retrieve switchports for a specific device
+ports = Switchport.get(serial="Q2AB-CDEF-1234", source="database")
+
+# Access typed attributes
+for network in networks:
+    print(network.name, network.product_types)
+
+for device in devices:
+    print(device.serial, device.model, device.status)
+```
+
+### Historical data (SCD2)
+
+Most resources use SCD2 versioning. You can query the state of the network at any point in time:
+
+```python
+from datetime import datetime, timezone
+from merakisync import Device
+
+# Devices as they were on March 1st
+snapshot = Device.get(
+    org_id="123456",
+    source="database",
+    ts=datetime(2026, 3, 1, tzinfo=timezone.utc),
+)
+
+# All historical versions, not just current
+all_versions = Device.get(org_id="123456", source="database", ts="all")
+```
+
+### Getting a pre-configured API client or database session
+
+```python
+from merakisync import get_dashboard, get_engine, get_session
+
+# Pre-configured Meraki DashboardAPI instance
+dashboard = get_dashboard()
+raw = dashboard.organizations.getOrganizations()
+
+# Pre-configured SQLAlchemy engine
+engine = get_engine()
+
+# Managed database session (commits on exit, rolls back on exception)
+with get_session() as session:
+    result = session.execute(text("SELECT count(*) FROM meraki.device"))
+```
+
+---
+
+## Environment Variables
+
+All configuration values can be supplied or overridden with environment variables. This is useful for containers and CI pipelines where writing a config file is not practical.
+
+| Variable | Description |
+|---|---|
+| `MERAKI_API_KEY` | Meraki Dashboard API key |
+| `MERAKISYNC_DB_HOST` | PostgreSQL host |
+| `MERAKISYNC_DB_PORT` | PostgreSQL port (default: `5432`) |
+| `MERAKISYNC_DB_NAME` | Database name |
+| `MERAKISYNC_DB_USER` | Database user |
+| `MERAKISYNC_DB_PASSWORD` | Database password |
+| `MERAKISYNC_LOG_LEVEL` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `INFO`) |
+
+Environment variables take precedence over values in the config file.
+
+---
+
+## Supported Resources
+
+| Resource | Table | Source | Notes |
+|---|---|---|---|
+| Organization | `meraki.organization` | Org-level | |
+| Network | `meraki.network` | Per-org | |
+| Device | `meraki.device` | Per-org | All product types |
+| Switchport | `meraki.switchport` | Per-device | MS switches only |
+| Uplink | `meraki.uplink` | Per-org | MX/Z devices |
+| UplinkUsage | `meraki.uplink_usage` | Per-org | Monthly bandwidth totals |
+| DhcpServerPolicy | `meraki.dhcp_server_policy` | Per-network | Switch networks only |
+| Alert | `meraki.alert` | Per-org | Assurance alerts |
+| L3FirewallRule | `meraki.l3_firewall_rule` | Per-network | MX appliance networks |
+
+All resources except `UplinkUsage` use SCD2 versioning — historical state is preserved when data changes. `UplinkUsage` stores cumulative monthly byte totals and updates in place.
+
+---
+
+## License
+
+`merakisync` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.

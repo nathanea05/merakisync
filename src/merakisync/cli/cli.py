@@ -1,78 +1,135 @@
+from __future__ import annotations
+
 import argparse
-import logging
+import sys
 
-from merakisync.cli.init import init
-from merakisync.config import MissingConfigError
-from merakisync.dashboard import get_dashboard
-from merakisync.db.engine import get_engine
-
-from merakisync import Organization, Network, Device, DhcpServerPolicy
-
-parser=argparse.ArgumentParser("Sync Meraki Network Configurations to a PostgreSQL Database")
-parser.add_argument("subcommand", nargs="?")
-
-# Options
-parser.add_argument("-s", "--suppress-logging", help="Suppresses Logging")
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from merakisync.cli.cmd_sync import SyncFlags
 
 
-def main():
-    try:
-        args = parser.parse_args()
-        if args.suppress_logging:
-            logging.disable(logging.CRITICAL)
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="merakisync",
+        description="Sync Meraki Dashboard data into PostgreSQL.",
+    )
 
-        if args.subcommand == "init":
-            init()
-            return
+    # Global options
+    log_group = parser.add_mutually_exclusive_group()
+    log_group.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable debug logging."
+    )
+    log_group.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress all output below WARNING."
+    )
 
-        if args.subcommand == "migrate":
-            print("Please don't do that")
-            return
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-        # Test the configuration
+    # init
+    subparsers.add_parser(
+        "init",
+        help="Configure the Meraki API key and database connection.",
+    )
+
+    # migrate
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Apply database migrations (Alembic upgrade head).",
+    )
+    migrate_parser.add_argument(
+        "--revision",
+        default="head",
+        metavar="REV",
+        help="Alembic revision target (default: head).",
+    )
+
+    # sync
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Sync Meraki data into the database.",
+    )
+    sync_parser.add_argument(
+        "-o", "--organizations", action="store_true", help="Sync organizations."
+    )
+    sync_parser.add_argument(
+        "-n", "--networks", action="store_true", help="Sync networks."
+    )
+    sync_parser.add_argument(
+        "-d", "--devices", action="store_true", help="Sync devices."
+    )
+    sync_parser.add_argument(
+        "--switchports", action="store_true", help="Sync switch port configurations."
+    )
+    sync_parser.add_argument(
+        "--uplinks", action="store_true", help="Sync uplink statuses."
+    )
+    sync_parser.add_argument(
+        "--uplink-usage", action="store_true", dest="uplink_usage",
+        help="Sync uplink bandwidth usage (current month)."
+    )
+    sync_parser.add_argument(
+        "--dhcp-server-policy", action="store_true", dest="dhcp_server_policy",
+        help="Sync switch DHCP server policies."
+    )
+    sync_parser.add_argument(
+        "--alerts", action="store_true", help="Sync assurance alerts."
+    )
+    sync_parser.add_argument(
+        "--l3-firewall-rules", action="store_true", dest="l3_firewall_rules",
+        help="Sync MX L3 firewall rules."
+    )
+
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    # Configure logging before doing anything else
+    from merakisync.logging import configure_logging
+    configure_logging(verbose=getattr(args, "verbose", False),
+                      quiet=getattr(args, "quiet", False))
+
+    if args.command is None:
+        parser.print_help()
+        sys.exit(0)
+
+    if args.command == "init":
+        from merakisync.cli.cmd_init import run
+        run()
+        return
+
+    if args.command == "migrate":
+        from merakisync.cli.cmd_migrate import run
+        run(revision=args.revision)
+        return
+
+    if args.command == "sync":
+        # Require a valid config before attempting any sync
+        from merakisync.exceptions import MissingConfigError
+        import logging
+        log = logging.getLogger(__name__)
         try:
-            dashboard = get_dashboard()
-            engine = get_engine()
-            conn = engine.connect()
-        except MissingConfigError as e:
-            logging.error(e)
-            return
+            from merakisync.config import get_config
+            get_config()
+        except MissingConfigError as exc:
+            log.error("%s", exc)
+            sys.exit(1)
+
+        from merakisync.cli.cmd_sync import run
+        flags = SyncFlags(
+            organizations=args.organizations,
+            networks=args.networks,
+            devices=args.devices,
+            switchports=args.switchports,
+            uplinks=args.uplinks,
+            uplink_usage=args.uplink_usage,
+            dhcp_server_policy=args.dhcp_server_policy,
+            alerts=args.alerts,
+            l3_firewall_rules=args.l3_firewall_rules,
+        )
+        run(flags)
+        return
 
 
-        logging.info("Syncing Organizations")
-        orgs = Organization.sync()
-        if not orgs:
-            logging.info("Found no orgs")
-            return
-        logging.info(f"Synced {len(orgs)} Organization(s)")
-
-        for org in orgs:
-            logging.info(f"Syncing Networks for Organzation '{org.name}'")
-            networks = Network.sync(org.id)
-            if not networks:
-                logging.error(f"Found no networks at org '{org.name}'")
-                continue
-
-            logging.info(f"Found and synced {len(networks)} Network(s)")
-
-            for network in networks:
-
-                if "switch" in network.product_types:
-                    DhcpServerPolicy.sync(network.id)
-                    logging.info(f"Synced DHCP Server Policy at network '{network.name}'")
-
-
-        return 0
-
-    
-
-    except KeyboardInterrupt:
-        print("")
-        quit()
-
-    
 if __name__ == "__main__":
     main()
-

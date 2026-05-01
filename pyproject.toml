@@ -5,36 +5,37 @@ build-backend = "hatchling.build"
 [project]
 name = "merakisync"
 dynamic = ["version"]
-description = ''
+description = "Sync Meraki Dashboard data into PostgreSQL and retrieve typed Meraki objects."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 license = "MIT"
-keywords = []
+keywords = ["meraki", "network", "sync", "postgresql"]
 authors = [
   { name = "Nathan Anderson", email = "nathanea05@gmail.com" },
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: Implementation :: CPython",
-  "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-"meraki", 
-"psycopg2-binary", 
-"SQLAlchemy>=2.0",
-"alembic>=1.13"
+  "meraki>=1.0",
+  "psycopg2-binary>=2.9",
+  "SQLAlchemy>=2.0",
+  "alembic>=1.13",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "mypy>=1.0",
 ]
 
 [project.urls]
-Documentation = "https://github.com/Nathan Anderson/merakisync#readme"
-Issues = "https://github.com/Nathan Anderson/merakisync/issues"
 Source = "https://github.com/Nathan Anderson/merakisync"
+Issues = "https://github.com/Nathan Anderson/merakisync/issues"
 
 [project.scripts]
 merakisync = "merakisync.cli.cli:main"
@@ -42,12 +43,15 @@ merakisync = "merakisync.cli.cli:main"
 [tool.hatch.version]
 path = "src/merakisync/__about__.py"
 
-[tool.hatch.envs.types]
-extra-dependencies = [
-  "mypy>=1.0.0",
+[tool.hatch.envs.default]
+dependencies = [
+  "pytest>=8.0",
+  "mypy>=1.0",
 ]
-[tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/merakisync tests}"
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+typecheck = "mypy --install-types --non-interactive {args:src/merakisync tests}"
 
 [tool.coverage.run]
 source_pkgs = ["merakisync", "tests"]
@@ -55,11 +59,12 @@ branch = true
 parallel = true
 omit = [
   "src/merakisync/__about__.py",
+  "src/merakisync/migrations/*",
 ]
 
 [tool.coverage.paths]
-merakisync = ["src/merakisync", "*/merakisync/src/meraki_sync"]
-tests = ["tests", "*/merakisync/tests"]
+merakisync = ["src/merakisync"]
+tests = ["tests"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -67,3 +72,8 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true

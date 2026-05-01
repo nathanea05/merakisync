@@ -1,21 +1,29 @@
-from dataclasses import dataclass
-from typing import ClassVar, Literal, TypeVar, Type
+from __future__ import annotations
 
-from sqlalchemy.event import api
-from merakisync.models.base import MerakiObj
-from merakisync import get_dashboard, get_engine
-from merakisync.utils import filter_array
+import logging
+from dataclasses import dataclass
 from datetime import datetime
+from typing import ClassVar, Literal, Type, TypeVar
+
 from sqlalchemy import text
+
+from merakisync.models.base import MerakiObj
+from merakisync.utils.filter_array import filter_array
+
+logger = logging.getLogger(__name__)
 
 I = TypeVar("I", bound="Device")
 
+
 @dataclass(frozen=True, slots=True)
 class Device(MerakiObj):
-    __table_name__ = "device"
-    __pk__ = ("serial",)
-    __mapping_override__ = {}
+    """Meraki Device — maps to meraki.device."""
 
+    __table_name__: ClassVar[str] = "device"
+    __pk__: ClassVar[tuple[str, ...]] = ("serial",)
+    __mapping_override__: ClassVar[dict[str, str]] = {}
+
+    # Business fields
     serial: str
     name: str | None = None
     network_id: str | None = None
@@ -33,88 +41,98 @@ class Device(MerakiObj):
     beacon_id_params: dict | None = None
     status: str | None = None
 
+    # SCD2 versioning
+    active_from: datetime | None = None
+    active_to: datetime | None = None
+    last_seen: datetime | None = None
+
+    # ------------------------------------------------------------------
+    # Retrieval
+    # ------------------------------------------------------------------
 
     @classmethod
-    def get(cls: Type[I],
-            org_id: str,
-            source: Literal["database", "meraki"] = "database",
-            ts: datetime | Literal["all"] | None = None,
+    def get(
+        cls: Type[I],
+        org_id: str,
+        source: Literal["database", "meraki"] = "database",
+        *,
+        ts: datetime | Literal["all"] | None = None,
+        serial: str = "",
+        name: str = "",
+        network_id: str = "",
+        tags_include: list[str] | None = None,
+        tags_exclude: list[str] | None = None,
+        status: str = "",
+        model: str = "",
+        product_types_include: list[Literal["appliance", "switch", "wireless"]] | None = None,
+        product_types_exclude: list[Literal["appliance", "switch", "wireless"]] | None = None,
+    ) -> list[I]:
+        """Retrieve devices for an organization.
 
-            serial: str = "",
-            name: str = "",
-            network_id: str = "",
-            tags_include: list[str] = [],
-            tags_exclude: list[str] = [],
-            status: str = "",
-            model: str = "",
-
-            product_types_include: list[Literal["appliance", "switch", "wireless"]] = [],
-            product_types_exclude: list[Literal["appliance", "switch", "wireless"]] = [],
-            ) -> list[I] | None:
-
+        Args:
+            org_id:  Meraki organization ID.
+            source:  "meraki" or "database".
+            ts:      Timestamp filter (DB only).
+            serial:  Filter by device serial.
+            name:    Filter by device name.
+            network_id: Filter by network ID.
+            tags_include:          All tags must be present (applied client-side for Meraki).
+            tags_exclude:          None of these tags may be present.
+            status:  Filter by device status (applied client-side for Meraki).
+            model:   Filter by model string.
+            product_types_include: Passed to Meraki API; also used for DB model-prefix filter.
+            product_types_exclude: Client-side only.
+        """
         if ts and source == "meraki":
-            raise ValueError("Cannot perform timestamped lookups when source is Meraki. Use source database instead.")
+            raise ValueError("Timestamp lookups require source='database'.")
+
+        tags_include = tags_include or []
+        tags_exclude = tags_exclude or []
+        product_types_include = product_types_include or []
+        product_types_exclude = product_types_exclude or []
 
         if source == "meraki":
-            filtered_devices = []
+            from merakisync.dashboard import get_dashboard
             dashboard = get_dashboard()
 
-            api_kwargs: dict = {
-                    "organizationId": org_id,
-                    "total_pages": "all",
-                    }
-
-
+            api_kwargs: dict = {"organizationId": org_id, "total_pages": "all"}
             if serial:
                 api_kwargs["serial"] = serial
-
             if network_id:
                 api_kwargs["networkIds"] = [network_id]
-
             if product_types_include:
                 api_kwargs["productTypes"] = product_types_include
-
             if tags_include:
                 api_kwargs["tags"] = tags_include
-
             if name:
                 api_kwargs["name"] = name
-
             if model:
                 api_kwargs["model"] = model
 
-            raw_devices = dashboard.organizations.getOrganizationDevices(**api_kwargs)
+            raw = dashboard.organizations.getOrganizationDevices(**api_kwargs)
+            devices = [cls.from_dashboard(r) for r in raw]
 
-            devices = [cls.from_dashboard(raw_device) for raw_device in raw_devices]
-
-
-            # Filters not supported by Meraki Dashboard
-            for device in devices:
-                # Filter excluded tags
+            filtered: list[I] = []
+            for dev in devices:
                 if not filter_array(
-                        values = set(device.tags),
-                        include = tags_include,
-                        exclude = tags_exclude
-                        ):
+                    values=set(dev.tags or []),
+                    include=tags_include,
+                    exclude=tags_exclude,
+                ):
                     continue
-
-                if status and device.status != status:
+                if status and dev.status != status:
                     continue
+                filtered.append(dev)
+            return filtered
 
-                filtered_devices.append(device)
-
-            return filtered_devices
-
-
-        elif source == "database":
+        if source == "database":
+            from merakisync.database import get_engine
             engine = get_engine()
-
-            where = []
-            params = {}
+            where: list[str] = []
+            params: dict = {}
 
             if ts and ts != "all":
-                where.append("active_from <= :ts")
-                where.append("(active_to > :ts OR active_to IS NULL)")
+                where += ["active_from <= :ts", "(active_to > :ts OR active_to IS NULL)"]
                 params["ts"] = ts
             elif ts != "all":
                 where.append("active_to IS NULL")
@@ -122,72 +140,59 @@ class Device(MerakiObj):
             if serial:
                 where.append("serial = :serial")
                 params["serial"] = serial
-
             if network_id:
                 where.append("network_id = :network_id")
                 params["network_id"] = network_id
-
+            if name:
+                where.append("name ILIKE :name")
+                params["name"] = f"%{name}%"
+            if model:
+                where.append("model ILIKE :model")
+                params["model"] = f"%{model}%"
+            if status:
+                where.append("status = :status")
+                params["status"] = status
             if tags_include:
                 where.append("tags ?& :tags_include")
                 params["tags_include"] = tags_include
-
             if tags_exclude:
-                where.append("tags ?| :tags_exclude")
+                where.append("NOT (tags ?| :tags_exclude)")
                 params["tags_exclude"] = tags_exclude
 
-            if name:
-                where.append("name = :name")
-                params["name"] = name
-
-            if model:
-                where.append("model = :model")
-                params["model"] = model
-
             if product_types_include:
-                model_prefixes = []
-
-                if "appliance" in product_types_include:
-                    model_prefixes.append("MX")
-
-                if "switch" in product_types_include:
-                    model_prefixes.append("MS")
-
-                if "wireless" in product_types_include:
-                    model_prefixes.append("MR")
-
-                if model_prefixes:
-                    model_clauses = []
-
-                    for i, prefix in enumerate(model_prefixes):
-                        param_name = f"model_prefix_{i}"
-                        model_clauses.append(f"model ILIKE :{param_name}")
-                        params[param_name] = f"{prefix}%"
-
-                    where.append("(" + " OR ".join(model_clauses) + ")")
+                # Map product type names to Meraki model prefixes
+                prefix_map = {"appliance": "MX", "switch": "MS", "wireless": "MR"}
+                clauses = []
+                for i, pt in enumerate(product_types_include):
+                    prefix = prefix_map.get(pt)
+                    if prefix:
+                        k = f"model_prefix_{i}"
+                        clauses.append(f"model ILIKE :{k}")
+                        params[k] = f"{prefix}%"
+                if clauses:
+                    where.append("(" + " OR ".join(clauses) + ")")
 
             where_sql = " AND ".join(where) if where else "TRUE"
-
-            sql = text(f"""
-                SELECT *
-                FROM {cls.__schema__}.{cls.__table_name__}
-                WHERE {where_sql}
-            """)
+            sql = text(f"SELECT * FROM {cls._qualified()} WHERE {where_sql}")
 
             with engine.connect() as conn:
-                results = conn.execute(sql, params).mappings().all()
-                return [cls.from_row(row) for row in results]
+                rows = conn.execute(sql, params).mappings().all()
+            return [cls.from_row(r) for r in rows]
 
-        else:
-            raise ValueError(f"Invalid source '{source}'. Must be one of: ['database', 'meraki']")
+        raise ValueError(f"Invalid source '{source}'. Must be 'database' or 'meraki'.")
 
-    
+    # ------------------------------------------------------------------
+    # Sync
+    # ------------------------------------------------------------------
+
     @classmethod
-    def sync(cls, org_id):
-        results = cls.get(source="meraki", org_id = org_id)
-        if not results:
-            return "Failed to retrieve data from Meraki"
+    def sync(cls: Type[I], org_id: str) -> list[I]:
+        """Fetch all devices for *org_id* from Meraki and upsert into the database."""
+        devices = cls.get(org_id, source="meraki")
+        if not devices:
+            logger.warning("No devices returned for org %s.", org_id)
+            return []
 
-        for row in results:
-            row.upsert()
-
-        return f"Synced {len(results)} items from Meraki"
+        counts = cls.upsert_many(devices)
+        logger.info("Devices synced for org %s: %s", org_id, counts)
+        return devices

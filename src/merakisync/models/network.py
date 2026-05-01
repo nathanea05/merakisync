@@ -1,102 +1,135 @@
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, TypeVar, Type
+from typing import ClassVar, Literal, Type, TypeVar
 
 from sqlalchemy import text
 
-from merakisync import get_dashboard, get_engine
 from merakisync.models.base import MerakiObj
 from merakisync.utils.filter_array import filter_array
 
+logger = logging.getLogger(__name__)
+
 I = TypeVar("I", bound="Network")
+
 
 @dataclass(frozen=True, slots=True)
 class Network(MerakiObj):
-    __table_name__ = "network"
-    __pk__ = ("id",)
-    __mapping_override__ = {}
+    """Meraki Network — maps to meraki.network."""
 
+    __table_name__: ClassVar[str] = "network"
+    __pk__: ClassVar[tuple[str, ...]] = ("id",)
+    __mapping_override__: ClassVar[dict[str, str]] = {}
+
+    # Business fields
     id: str
     organization_id: str
     name: str
-    product_types: list
-    time_zone: str
-    tags: list
-    enrollment_string: str
-    url: str
-    notes: str
-    is_bound_to_config_template: bool
+    product_types: list | None = None
+    time_zone: str | None = None
+    tags: list | None = None
+    enrollment_string: str | None = None
+    url: str | None = None
+    notes: str | None = None
+    is_bound_to_config_template: bool | None = None
 
+    # SCD2 versioning
+    active_from: datetime | None = None
+    active_to: datetime | None = None
+    last_seen: datetime | None = None
+
+    # ------------------------------------------------------------------
+    # Retrieval
+    # ------------------------------------------------------------------
 
     @classmethod
-    def get(cls: Type[I],
-            org_id: str,
-            source: Literal["database", "meraki"] = "database",
-            ts: datetime | Literal["all"] | None = None,
+    def get(
+        cls: Type[I],
+        org_id: str,
+        source: Literal["database", "meraki"] = "database",
+        *,
+        ts: datetime | Literal["all"] | None = None,
+        name: str = "",
+        network_id: str = "",
+        tags_include: list[str] | None = None,
+        tags_exclude: list[str] | None = None,
+        product_types_include: list[str] | None = None,
+        product_types_exclude: list[str] | None = None,
+    ) -> list[I]:
+        """Retrieve networks for an organization.
 
-            name: str = "",
-            network_id: str = "",
-            tags_include: list[str] = [],
-            tags_exclude: list[str] = [],
-            product_types_include: list[str] = [],
-            product_types_exclude: list[str] = []
-            ) -> list[I] | None:
-
+        Args:
+            org_id:   Meraki organization ID (required for source='meraki').
+            source:   "meraki" or "database".
+            ts:       Timestamp filter (DB only).
+            name:     Exact-name filter for Meraki; ILIKE filter for DB.
+            network_id: Filter by network ID.
+            tags_include:          All of these tags must be present.
+            tags_exclude:          None of these tags may be present.
+            product_types_include: All of these product types must be present.
+            product_types_exclude: None of these product types may be present.
+        """
         if ts and source == "meraki":
-            raise ValueError("Cannot perform timestamped lookups when source is Meraki. Use source database instead.")
+            raise ValueError("Timestamp lookups require source='database'.")
+
+        tags_include = tags_include or []
+        tags_exclude = tags_exclude or []
+        product_types_include = product_types_include or []
+        product_types_exclude = product_types_exclude or []
 
         if source == "meraki":
-            filtered_networks = []
+            from merakisync.dashboard import get_dashboard
             dashboard = get_dashboard()
-            raw_networks = dashboard.organizations.getOrganizationNetworks(org_id, total_pages="all")
-            networks = [cls.from_dashboard(raw_network) for raw_network in raw_networks]
+            raw = dashboard.organizations.getOrganizationNetworks(org_id, total_pages="all")
+            networks = [cls.from_dashboard(r) for r in raw]
 
-            for network in networks:
-                if name and network.name != name:
+            filtered: list[I] = []
+            for net in networks:
+                if name and net.name != name:
                     continue
-                if network_id and network.id != network_id:
-                    continue
-                if not filter_array(
-                        values = set(network.tags),
-                        include = tags_include,
-                        exclude = tags_exclude
-                        ):
+                if network_id and net.id != network_id:
                     continue
                 if not filter_array(
-                        values = set(network.product_types),
-                        include = product_types_include,
-                        exclude = product_types_exclude
-                        ):
+                    values=set(net.tags or []),
+                    include=tags_include,
+                    exclude=tags_exclude,
+                ):
                     continue
+                if not filter_array(
+                    values=set(net.product_types or []),
+                    include=product_types_include,
+                    exclude=product_types_exclude,
+                ):
+                    continue
+                filtered.append(net)
 
-                
-                filtered_networks.append(network)
+            filtered.sort(key=lambda n: n.name)
+            return filtered
 
-            filtered_networks.sort(key=lambda network: network.name)
-
-            return filtered_networks
-
-
-        elif source == "database":
+        if source == "database":
+            from merakisync.database import get_engine
             engine = get_engine()
+            where: list[str] = []
+            params: dict = {}
 
-            where = []
-            params = {}
-
-        
             if ts and ts != "all":
-                where.append("active_from <= :ts")
-                where.append("(active_to > :ts OR active_to IS NULL)")
+                where += ["active_from <= :ts", "(active_to > :ts OR active_to IS NULL)"]
                 params["ts"] = ts
             elif ts != "all":
                 where.append("active_to IS NULL")
 
+            if org_id:
+                where.append("organization_id = :org_id")
+                params["org_id"] = org_id
+
             if name:
                 where.append("name ILIKE :name")
-                params["name"] = name
+                params["name"] = f"%{name}%"
 
             if network_id:
-                where.append("id ILIKE :network_id")
+                where.append("id = :network_id")
                 params["network_id"] = network_id
 
             if tags_include:
@@ -107,34 +140,27 @@ class Network(MerakiObj):
                 where.append("NOT (tags ?| :tags_exclude)")
                 params["tags_exclude"] = tags_exclude
 
-
-
             where_sql = " AND ".join(where) if where else "TRUE"
-
-            sql = text(f"""
-                SELECT *
-                FROM {cls.__schema__}.{cls.__table_name__}
-                WHERE {where_sql}
-            """)
+            sql = text(f"SELECT * FROM {cls._qualified()} WHERE {where_sql} ORDER BY name")
 
             with engine.connect() as conn:
-                results = conn.execute(sql, params).mappings().all()
-                networks = [cls.from_row(row) for row in results]
-                networks.sort(key=lambda network: network.name)
-                return networks
-            
+                rows = conn.execute(sql, params).mappings().all()
+            return [cls.from_row(r) for r in rows]
 
-        else:
-            raise ValueError(f"Invalid source '{source}'. Must be one of: ['database', 'meraki']")
+        raise ValueError(f"Invalid source '{source}'. Must be 'database' or 'meraki'.")
 
-    
+    # ------------------------------------------------------------------
+    # Sync
+    # ------------------------------------------------------------------
+
     @classmethod
-    def sync(cls: Type[I], org_id: str) -> list[I] | None:
-        results = cls.get(source="meraki", org_id=org_id)
-        if not results:
-            return None
+    def sync(cls: Type[I], org_id: str) -> list[I]:
+        """Fetch all networks for *org_id* from Meraki and upsert into the database."""
+        networks = cls.get(org_id, source="meraki")
+        if not networks:
+            logger.warning("No networks returned for org %s.", org_id)
+            return []
 
-        for row in results:
-            row.upsert()
-
-        return results
+        counts = cls.upsert_many(networks)
+        logger.info("Networks synced for org %s: %s", org_id, counts)
+        return networks

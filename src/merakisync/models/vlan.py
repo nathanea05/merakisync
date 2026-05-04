@@ -170,11 +170,22 @@ class Vlan(MerakiObj):
 
     @classmethod
     def sync(cls: Type[I], network_id: str) -> list[I]:
-        """Fetch all VLANs for *network_id* from Meraki and upsert into the database."""
-        vlans = cls.get(network_id, source="meraki")
+        """Fetch all VLANs for *network_id* from Meraki and upsert into the database.
+
+        Networks with VLANs disabled return a 400 from the API — these are
+        skipped silently since it is a normal configuration state, not an error.
+        """
+        from meraki.exceptions import APIError
+        try:
+            vlans = cls.get(network_id, source="meraki")
+        except APIError as exc:
+            if exc.status == 400 and "VLANs are not enabled" in str(exc):
+                logger.debug("VLANs not enabled for network %s — skipping.", network_id)
+                return []
+            raise
         if not vlans:
             logger.debug("No VLANs returned for network %s.", network_id)
             return []
         counts = cls.upsert_many(vlans)
-        logger.debug("VLANs synced for network %s: %s", network_id, counts)
+        logger.info("VLANs synced for network %s: %s", network_id, counts)
         return vlans

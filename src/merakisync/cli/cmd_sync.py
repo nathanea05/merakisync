@@ -105,7 +105,7 @@ def run(flags: SyncFlags | None = None) -> None:
         # Networks → per-network resources
         # --------------------------------------------------------------
         need_networks = do_all or flags.networks or flags.switchports \
-            or flags.dhcp_server_policy or flags.l3_firewall_rules
+            or flags.dhcp_server_policy or flags.l3_firewall_rules or flags.vlans
 
         if not need_networks:
             continue
@@ -144,7 +144,7 @@ def run(flags: SyncFlags | None = None) -> None:
             # VLANs  (appliance networks only)
             # ----------------------------------------------------------
             if (do_all or flags.vlans) and "appliance" in product_types:
-                logger.debug("    Syncing VLANs for network %s...", net_id)
+                logger.info("    Syncing VLANs for network %s...", net_id)
                 Vlan.sync(net_id)
 
         # --------------------------------------------------------------

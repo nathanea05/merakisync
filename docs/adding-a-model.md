@@ -394,9 +394,20 @@ from merakisync.models.vlan import Vlan
 
 # inside the per-network loop:
 if (do_all or flags.vlans) and "appliance" in product_types:
-    logger.debug("    Syncing VLANs for network %s...", net_id)
+    logger.info("    Syncing VLANs for network %s...", net_id)
     Vlan.sync(net_id)
 ```
+
+### 5d. Add the flag to `need_networks` — cli/cmd_sync.py
+
+If the resource is synced inside the per-network loop, its flag **must** be added to the `need_networks` guard. Without this, running `merakisync sync --vlans` will skip the entire per-network loop and do nothing.
+
+```python
+need_networks = do_all or flags.networks or flags.switchports \
+    or flags.dhcp_server_policy or flags.l3_firewall_rules or flags.vlans
+```
+
+Add your new flag to this condition. If you skip this step, the CLI flag will appear to work (no error) but will silently do nothing.
 
 ---
 
@@ -440,5 +451,6 @@ Use this to verify you have not missed anything before committing.
 [ ] merakisync migrate run and confirmed
 [ ] cli/cli.py: --vlans flag added to sync subparser
 [ ] cli/cmd_sync.py: vlans field added to SyncFlags, orchestration call added
+[ ] cli/cmd_sync.py: new flag added to need_networks guard (if resource is per-network)
 [ ] tests/test_vlan.py written
 ```

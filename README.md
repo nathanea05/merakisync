@@ -171,11 +171,17 @@ merakisync sync --quiet      # WARNING level and above only
 
 Output is plain text with no colour codes, making it safe to redirect or capture in log files.
 
+### Scheduling recommendations
+
+**Run once daily at midnight UTC.** This keeps data fresh and ensures `UplinkUsage` monthly totals remain accurate.
+
+> **Important:** `UplinkUsage` uses an incremental sync strategy — each run queries only the delta since the last sync and accumulates the bytes onto the stored monthly total. The Meraki API enforces a 14-day maximum query window. If more than 14 days pass between syncs, the data for that gap is unrecoverable and a warning is logged. Run at least once every 14 days to guarantee accurate monthly usage totals.
+
 ### Scheduling with cron
 
 ```cron
-# Sync all data every hour
-0 * * * * /usr/local/bin/merakisync sync >> /var/log/merakisync.log 2>&1
+# Sync all data daily at midnight UTC
+0 0 * * * /usr/local/bin/merakisync sync >> /var/log/merakisync.log 2>&1
 ```
 
 ### Scheduling with systemd
@@ -201,11 +207,11 @@ Create `/etc/systemd/system/merakisync.timer`:
 
 ```ini
 [Unit]
-Description=Run merakisync every hour
+Description=Run merakisync daily at midnight UTC
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=1h
+OnCalendar=*-*-* 00:00:00 UTC
+Persistent=true
 
 [Install]
 WantedBy=timers.target
@@ -315,7 +321,7 @@ Environment variables take precedence over values in the config file.
 | Device | `meraki.device` | Per-org | All product types |
 | Switchport | `meraki.switchport` | Per-device | MS switches only |
 | Uplink | `meraki.uplink` | Per-org | MX/Z devices |
-| UplinkUsage | `meraki.uplink_usage` | Per-org | Monthly bandwidth totals |
+| UplinkUsage | `meraki.uplink_usage` | Per-org | Monthly bandwidth totals; sync at least every 14 days |
 | DhcpServerPolicy | `meraki.dhcp_server_policy` | Per-network | Switch networks only |
 | Alert | `meraki.alert` | Per-org | Assurance alerts |
 | L3FirewallRule | `meraki.l3_firewall_rule` | Per-network | MX appliance networks |

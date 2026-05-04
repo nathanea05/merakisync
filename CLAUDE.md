@@ -185,7 +185,11 @@ Every SCD2 model table has three timestamp columns:
 
 ### The SCD2 exception — UplinkUsage
 
-`UplinkUsage` sets `__versioned__ = False`. It tracks cumulative monthly bandwidth bytes — a rolling metric, not a configuration state. Its upsert uses `INSERT … ON CONFLICT DO UPDATE` to update the byte counts in place. It has a `last_seen` column but no `active_from` or `active_to`. This is the only current model that behaves this way.
+`UplinkUsage` sets `__versioned__ = False`. It tracks cumulative monthly bandwidth bytes — a rolling metric, not a configuration state. Its upsert uses `INSERT … ON CONFLICT DO UPDATE` to accumulate byte counts in place. It has a `last_seen` column but no `active_from` or `active_to`. This is the only current model that behaves this way.
+
+**Incremental sync strategy:** `sync()` reads `last_seen` from existing DB records as `t0`, queries the Meraki API only for the delta window since the last sync (`t0 → now`), and accumulates those bytes onto the stored totals before upserting. `last_seen` is set to `t1` (the end of the queried window), not to wall-clock time, so the next sync continues from exactly where this one ended. This produces accurate full-month totals provided syncs run at least every 14 days (the Meraki API's maximum window size). If a gap longer than 14 days is detected, a `WARNING` is logged and that gap is unrecoverable.
+
+**Overridable `last_seen` in `_simple_upsert`:** Unlike SCD2 models (which always write `last_seen = now()`), the simple upsert path uses the `last_seen` value from the object itself if it is not `None`, and falls back to `now()` only when it is `None`. This allows `sync()` to write `last_seen = t1` precisely.
 
 ---
 

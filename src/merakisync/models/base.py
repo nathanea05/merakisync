@@ -225,17 +225,19 @@ class MerakiObj:
         now = _now()
 
         non_pk = [col for col in row if col not in set(cls.__pk__) | _VERSIONING_FIELDS]
-        all_cols = list(cls.__pk__) + non_pk
+        # Use last_seen from the object if explicitly set, otherwise default to now.
+        last_seen = row["last_seen"] if row.get("last_seen") is not None else now
+        all_cols = list(cls.__pk__) + non_pk + ["last_seen"]
 
         col_list = ", ".join(all_cols)
         val_list = ", ".join(f":{c}" for c in all_cols)
         pk_list = ", ".join(cls.__pk__)
         update_clause = ", ".join(
             f"{c} = EXCLUDED.{c}" for c in non_pk
-        ) + ", last_seen = :ts"
+        ) + ", last_seen = EXCLUDED.last_seen"
 
-        params = {c: _db_value(row.get(c)) for c in all_cols}
-        params["ts"] = now
+        params = {c: _db_value(row.get(c)) for c in list(cls.__pk__) + non_pk}
+        params["last_seen"] = last_seen
 
         conn.execute(
             text(

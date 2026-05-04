@@ -24,14 +24,13 @@ class UplinkUsage(MerakiObj):
 
     Design notes:
     - PK: (network_id, serial, interface, month, year).  Each record stores the
-      cumulative bytes for that uplink interface for the given month as of the
-      last sync.  On each sync run the existing record is overwritten with the
-      latest cumulative total — SCD2 versioning is not appropriate here because
-      this is a rolling metric, not a configuration state.
-    - The Meraki API allows t0 up to 30 days ago but t1 can be at most 14 days
-      after t0.  For months that started more than 14 days ago only a partial
-      window is captured per sync run; only the current month should be
-      considered a complete total.
+      true cumulative bytes for that uplink for the full month to date.
+    - sync() uses an incremental window: it reads last_seen from the DB as t0
+      and queries only the delta since the last sync, then accumulates those
+      bytes onto the existing stored total.  This produces accurate monthly
+      totals provided syncs run at least every 14 days (the API's max window).
+    - last_seen records the end of the last successfully synced window (t1),
+      not the wall-clock time of the sync run.  The next sync uses it as t0.
     - __versioned__ = False causes the base class to use a simple
       INSERT … ON CONFLICT DO UPDATE instead of SCD2 logic.
     """
@@ -175,14 +174,91 @@ class UplinkUsage(MerakiObj):
     def sync(cls: Type[I], org_id: str) -> list[I]:
         """Fetch current-month uplink usage for *org_id* and upsert into the database.
 
-        Existing records for the current month are updated with the latest
-        cumulative byte counts.  Records for previous months are never modified.
+        Uses an incremental window strategy to build accurate monthly totals:
+
+        1. Load existing records for the current month from the DB.
+        2. Use the most recent last_seen as t0 (falling back to month start on the
+           first sync of the month).
+        3. Query the API for bytes in the t0→now window only.
+        4. Accumulate the delta bytes on top of the existing stored totals.
+        5. Upsert with last_seen=t1 so the next sync continues from where this
+           one ended.
+
+        As long as syncs run at least every 14 days (the API's maximum window),
+        the full month is covered with no gaps. If a gap > 14 days is detected,
+        a warning is logged and the data for that gap is unrecoverable.
         """
-        usages = cls.get(org_id, source="meraki")
-        if not usages:
+        from datetime import timedelta
+        from merakisync.dashboard import get_dashboard
+
+        now = datetime.now(tz=timezone.utc)
+        month = now.month
+        year = now.year
+        month_start = datetime(year, month, 1, tzinfo=timezone.utc)
+
+        # --- Step 1: load existing records for this month --------------------
+        existing = cls.get(org_id, source="database", month=month, year=year)
+        existing_map: dict[tuple[str, str, str], I] = {
+            (r.network_id, r.serial, r.interface): r for r in existing
+        }
+
+        # --- Step 2: compute t0 from last_seen -------------------------------
+        last_seen_values = [r.last_seen for r in existing if r.last_seen is not None]
+        if last_seen_values:
+            t0 = max(last_seen_values)
+            gap = now - t0
+            if gap > timedelta(days=14):
+                logger.warning(
+                    "Uplink usage gap of %d days for org %s — data between %s and %s "
+                    "is unrecoverable (API 14-day window limit).",
+                    gap.days, org_id,
+                    (now - timedelta(days=14)).strftime("%Y-%m-%d"),
+                    t0.strftime("%Y-%m-%d"),
+                )
+                # Clamp t0 so the API call doesn't fail
+                t0 = max(t0, now - timedelta(days=30))
+        else:
+            t0 = month_start
+
+        t1 = min(now, t0 + timedelta(days=14))
+
+        # --- Step 3: query API for the delta window --------------------------
+        dashboard = get_dashboard()
+        response = dashboard.appliance.getOrganizationApplianceUplinksUsageByNetwork(
+            org_id,
+            t0=t0.isoformat(),
+            t1=t1.isoformat(),
+        )
+
+        # --- Step 4: accumulate delta bytes onto existing totals -------------
+        accumulated: list[I] = []
+        for net_data in response:
+            net_id = net_data.get("networkId", "")
+            for uplink_data in net_data.get("byUplink", []):
+                dev_serial = uplink_data.get("serial", "")
+                iface = uplink_data.get("interface", "")
+                delta_sent = uplink_data.get("sent") or 0
+                delta_received = uplink_data.get("received") or 0
+
+                prior = existing_map.get((net_id, dev_serial, iface))
+                new_sent = (prior.sent or 0) + delta_sent if prior else delta_sent
+                new_received = (prior.received or 0) + delta_received if prior else delta_received
+
+                accumulated.append(cls(
+                    network_id=net_id,
+                    serial=dev_serial,
+                    interface=iface,
+                    month=month,
+                    year=year,
+                    sent=new_sent,
+                    received=new_received,
+                    last_seen=t1,   # written to DB; used as t0 on the next sync
+                ))
+
+        if not accumulated:
             logger.warning("No uplink usage returned for org %s.", org_id)
             return []
 
-        counts = cls.upsert_many(usages)
+        counts = cls.upsert_many(accumulated)
         logger.info("UplinkUsage synced for org %s: %s", org_id, counts)
-        return usages
+        return accumulated

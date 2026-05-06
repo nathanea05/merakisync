@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="DhcpServerPolicy")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class DhcpServerPolicy(MerakiObj):
     """Meraki switch DHCP server policy — maps to meraki.dhcp_server_policy.
 

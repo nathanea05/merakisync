@@ -1,4 +1,5 @@
-"""Tests for MerakiObj base class: from_dashboard, from_row, data comparison."""
+"""Tests for MerakiObj base class: from_dashboard, from_row, data comparison,
+to_meraki_dict, and _changed_fields tracking."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from merakisync.models.base import MerakiObj, _data_equal
 # Minimal concrete model for testing
 # ---------------------------------------------------------------------------
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class _Widget(MerakiObj):
     __table_name__: ClassVar[str] = "widget"
     __pk__: ClassVar[tuple[str, ...]] = ("id",)
@@ -145,3 +146,112 @@ class TestDataFields:
         data = w._data_fields()
         assert data["label"] == "hello"
         assert data["widget_type"] == "button"
+
+
+# ---------------------------------------------------------------------------
+# to_meraki_dict
+# ---------------------------------------------------------------------------
+
+class TestToMerakiDict:
+    def test_snake_fields_become_camel(self):
+        w = _Widget(id="w1", label="hello", is_active=True)
+        d = w.to_meraki_dict()
+        assert "label" in d
+        assert "isActive" in d
+
+    def test_mapping_override_applied(self):
+        w = _Widget(id="w1", widget_type="button")
+        d = w.to_meraki_dict()
+        # widget_type -> "type" per __mapping_override__
+        assert "type" in d
+        assert "widgetType" not in d
+
+    def test_versioning_fields_excluded(self):
+        now = datetime.now(tz=timezone.utc)
+        w = _Widget(id="w1", active_from=now, active_to=None, last_seen=now)
+        d = w.to_meraki_dict()
+        assert "active_from" not in d
+        assert "activeFrom" not in d
+        assert "activeTo" not in d
+        assert "lastSeen" not in d
+
+    def test_fields_filter_snake_case_input(self):
+        w = _Widget(id="w1", label="hello", widget_type="button", is_active=True)
+        d = w.to_meraki_dict(fields=["id", "label"])
+        assert set(d.keys()) == {"id", "label"}
+
+    def test_fields_filter_returns_camel_keys(self):
+        w = _Widget(id="w1", is_active=True, widget_type="button")
+        d = w.to_meraki_dict(fields=["is_active", "widget_type"])
+        assert "isActive" in d
+        assert "type" in d  # mapped via __mapping_override__
+        assert "is_active" not in d
+        assert "widget_type" not in d
+
+    def test_none_values_included(self):
+        w = _Widget(id="w1")
+        d = w.to_meraki_dict()
+        assert "label" in d
+        assert d["label"] is None
+
+    def test_dict_field_included(self):
+        w = _Widget(id="w1", metadata={"k": "v"})
+        d = w.to_meraki_dict()
+        assert d["metadata"] == {"k": "v"}
+
+
+# ---------------------------------------------------------------------------
+# _changed_fields
+# ---------------------------------------------------------------------------
+
+class TestChangedFields:
+    def test_empty_after_construction(self):
+        w = _Widget(id="w1", label="hello")
+        assert w._changed_fields == set()
+
+    def test_tracks_assignment(self):
+        w = _Widget(id="w1")
+        w.label = "new value"
+        assert "label" in w._changed_fields
+
+    def test_tracks_multiple_assignments(self):
+        w = _Widget(id="w1")
+        w.label = "a"
+        w.is_active = True
+        assert "label" in w._changed_fields
+        assert "is_active" in w._changed_fields
+
+    def test_reassignment_keeps_field_in_set(self):
+        w = _Widget(id="w1", label="original")
+        w.label = "first change"
+        w.label = "second change"
+        assert "label" in w._changed_fields
+        assert w.label == "second change"
+
+    def test_changed_fields_not_in_to_dict(self):
+        w = _Widget(id="w1")
+        w.label = "x"
+        assert "_changed_fields" not in w.to_dict()
+
+    def test_changed_fields_not_in_data_fields(self):
+        w = _Widget(id="w1")
+        w.label = "x"
+        assert "_changed_fields" not in w._data_fields()
+
+    def test_from_dashboard_starts_clean(self):
+        w = _Widget.from_dashboard({"id": "w1", "label": "hello"})
+        assert w._changed_fields == set()
+
+    def test_from_row_starts_clean(self):
+        w = _Widget.from_row({"id": "w1", "label": "hello"})
+        assert w._changed_fields == set()
+
+    def test_pk_fields_are_immutable(self):
+        w = _Widget(id="w1")
+        with pytest.raises(AttributeError, match="primary key"):
+            w.id = "w2"
+
+    def test_non_pk_fields_are_mutable(self):
+        w = _Widget(id="w1", label="original")
+        w.label = "updated"
+        assert w.label == "updated"

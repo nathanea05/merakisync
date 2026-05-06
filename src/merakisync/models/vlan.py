@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="Vlan")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Vlan(MerakiObj):
     """Meraki MX appliance VLAN — maps to meraki.vlan.
 

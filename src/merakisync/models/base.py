@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import fields, is_dataclass
+from dataclasses import fields as dataclass_fields, is_dataclass
 from datetime import datetime, timezone
 from typing import Any, ClassVar, Sequence, Type, TypeVar
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
-from merakisync.utils.casing import camel_to_snake
+from merakisync.utils.casing import camel_to_snake, snake_to_camel
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,26 @@ class MerakiObj:
     __versioned__: ClassVar[bool] = True  # SCD2 by default
 
     # ------------------------------------------------------------------
+    # Change tracking
+    # ------------------------------------------------------------------
+
+    def __post_init__(self) -> None:
+        """Called by the dataclass-generated __init__ after all fields are set."""
+        self._changed_fields: set[str] = set()
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Track post-init assignments. During __init__, _changed_fields does not
+        # yet exist in __dict__, so we skip tracking until it is initialised.
+        if "_changed_fields" in self.__dict__:
+            if name in self.__class__.__pk__:
+                raise AttributeError(
+                    f"{self.__class__.__name__}.{name} is a primary key field and cannot be reassigned."
+                )
+            if name != "_changed_fields":
+                self._changed_fields.add(name)
+        object.__setattr__(self, name, value)
+
+    # ------------------------------------------------------------------
     # Class-level naming helpers
     # ------------------------------------------------------------------
 
@@ -76,7 +96,7 @@ class MerakiObj:
         if not is_dataclass(cls):
             raise TypeError(f"{cls.__name__} must be a dataclass")
 
-        field_names = {f.name for f in fields(cls)}
+        field_names = {f.name for f in dataclass_fields(cls)}
 
         # Invert the override map: dashboard_key -> model_field
         key_to_field: dict[str, str] = {
@@ -102,7 +122,7 @@ class MerakiObj:
         if not is_dataclass(cls):
             raise TypeError(f"{cls.__name__} must be a dataclass")
 
-        field_names = {f.name for f in fields(cls)}
+        field_names = {f.name for f in dataclass_fields(cls)}
 
         if isinstance(row, dict):
             data: dict[str, Any] = row
@@ -117,7 +137,7 @@ class MerakiObj:
     def to_dict(self) -> dict[str, Any]:
         if not is_dataclass(self):
             raise TypeError(f"{self.__class__.__name__} must be a dataclass")
-        return {f.name: getattr(self, f.name) for f in fields(self)}
+        return {f.name: getattr(self, f.name) for f in dataclass_fields(self)}
 
     def _data_fields(self) -> dict[str, Any]:
         """Return only the business-data fields (excludes PK and versioning)."""
@@ -125,9 +145,34 @@ class MerakiObj:
         excluded = set(cls.__pk__) | _VERSIONING_FIELDS
         return {
             f.name: getattr(self, f.name)
-            for f in fields(self)  # type: ignore[arg-type]
+            for f in dataclass_fields(self)  # type: ignore[arg-type]
             if f.name not in excluded
         }
+
+    def to_meraki_dict(self, fields: list[str] | None = None) -> dict[str, Any]:
+        """Return a camelCase dict suitable for sending to the Meraki API.
+
+        Excludes SCD2 versioning fields (active_from, active_to, last_seen).
+        Uses __mapping_override__ for fields that do not follow snake_to_camel.
+
+        Args:
+            fields: Optional list of snake_case field names to include.
+                    When omitted, all non-versioning fields are included.
+        """
+        if not is_dataclass(self):
+            raise TypeError(f"{self.__class__.__name__} must be a dataclass")
+        cls = self.__class__
+        override = cls.__mapping_override__  # {model_field: api_key}
+        result: dict[str, Any] = {}
+        for f in dataclass_fields(self):
+            name = f.name
+            if name in _VERSIONING_FIELDS:
+                continue
+            if fields is not None and name not in fields:
+                continue
+            api_key = override.get(name) or snake_to_camel(name)
+            result[api_key] = getattr(self, name)
+        return result
 
     # ------------------------------------------------------------------
     # Single-row upsert

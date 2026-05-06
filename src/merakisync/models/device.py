@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="Device")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Device(MerakiObj):
     """Meraki Device — maps to meraki.device."""
 

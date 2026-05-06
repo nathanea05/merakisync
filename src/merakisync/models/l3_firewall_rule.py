@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="L3FirewallRule")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class L3FirewallRule(MerakiObj):
     """Meraki MX L3 firewall rule — maps to meraki.l3_firewall_rule.
 

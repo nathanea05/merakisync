@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="Switchport")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Switchport(MerakiObj):
     """Meraki MS switch port configuration — maps to meraki.switchport.
 

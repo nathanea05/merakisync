@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="Network")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Network(MerakiObj):
     """Meraki Network — maps to meraki.network."""
 

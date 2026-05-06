@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="Ssid")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Ssid(MerakiObj):
     """Meraki wireless SSID — maps to meraki.ssid.
 

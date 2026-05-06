@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="Alert")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Alert(MerakiObj):
     """Meraki Assurance Alert — maps to meraki.alert.
 

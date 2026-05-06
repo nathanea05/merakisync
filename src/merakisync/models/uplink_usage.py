@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="UplinkUsage")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class UplinkUsage(MerakiObj):
     """Meraki MX/Z uplink bandwidth usage, tracked per calendar month.
 

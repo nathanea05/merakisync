@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 I = TypeVar("I", bound="Uplink")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Uplink(MerakiObj):
     """Meraki MX/Z uplink status — maps to meraki.uplink.
 

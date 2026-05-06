@@ -21,6 +21,7 @@ from merakisync.models.dhcp_server_policy import DhcpServerPolicy
 from merakisync.models.alert import Alert
 from merakisync.models.l3_firewall_rule import L3FirewallRule
 from merakisync.models.vlan import Vlan
+from merakisync.models.ssid import Ssid
 
 # Exceptions
 from merakisync.exceptions import (
@@ -49,6 +50,7 @@ __all__ = [
     "Alert",
     "L3FirewallRule",
     "Vlan",
+    "Ssid",
     # Exceptions
     "MissingConfigError",
     "ConfigWriteError",

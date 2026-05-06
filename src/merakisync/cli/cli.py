@@ -96,6 +96,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sync_parser.add_argument(
         "--vlans", action="store_true", help="Sync MX appliance VLANs."
     )
+    sync_parser.add_argument(
+        "--ssids", action="store_true", help="Sync wireless SSIDs."
+    )
 
     return parser
 
@@ -147,6 +150,7 @@ def main() -> None:
             alerts=args.alerts,
             l3_firewall_rules=args.l3_firewall_rules,
             vlans=args.vlans,
+            ssids=args.ssids,
         )
         run(flags)
         return

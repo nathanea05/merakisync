@@ -99,25 +99,30 @@ class Switchport(MerakiObj):
     @classmethod
     def get(
         cls: Type[I],
-        serial: str,
         source: Literal["database", "meraki"] = "database",
         *,
+        org_id: str | None = None,
+        serial: str | None = None,
         ts: datetime | Literal["all"] | None = None,
         port_id: str | None = None,
         enabled: bool | None = None,
         port_type: str | None = None,
         vlan: int | None = None,
     ) -> list[I]:
-        """Retrieve switchports for a device serial.
+        """Retrieve switchports from Meraki or the database.
 
         Args:
-            serial:     Device serial number.
             source:     "meraki" or "database".
+            org_id:     Required for source="meraki" when serial is not provided.
+                        Uses GET /organizations/{org}/switch/ports/bySwitch.
+            serial:     Device serial number.  When provided with source="meraki",
+                        uses the faster per-device endpoint instead of the org call.
+                        Optional filter for source="database".
             ts:         Timestamp filter (DB only).
-            port_id:    Filter by specific port ID.
-            enabled:    Filter by enabled state (DB only).
-            port_type:  Filter by port type — "access", "trunk", etc. (DB only).
-            vlan:       Filter by VLAN ID (DB only).
+            port_id:    Filter by port ID.
+            enabled:    Filter by enabled state.
+            port_type:  Filter by port type — "access", "trunk", etc.
+            vlan:       Filter by access VLAN ID.
         """
         if ts and source == "meraki":
             raise ValueError("Timestamp lookups require source='database'.")
@@ -125,22 +130,48 @@ class Switchport(MerakiObj):
         if source == "meraki":
             from merakisync.dashboard import get_dashboard
             dashboard = get_dashboard()
-            raw_ports = dashboard.switch.getDeviceSwitchPorts(serial)
-            ports: list[I] = []
-            for raw in raw_ports:
-                flat = dict(raw)
-                flat["serial"] = serial
-                port = cls.from_dashboard(flat)
-                if port_id and port.port_id != port_id:
-                    continue
-                ports.append(port)
-            return ports
+
+            if serial:
+                raw_ports = dashboard.switch.getDeviceSwitchPorts(serial)
+                ports: list[I] = []
+                for raw in raw_ports:
+                    flat = dict(raw)
+                    flat["serial"] = serial
+                    port = cls.from_dashboard(flat)
+                    if port_id and port.port_id != port_id:
+                        continue
+                    ports.append(port)
+                return ports
+
+            if org_id:
+                response = dashboard.switch.getOrganizationSwitchPortsBySwitch(
+                    org_id, total_pages="all"
+                )
+                ports = []
+                for device_data in response:
+                    dev_serial = device_data.get("serial", "")
+                    for raw_port in device_data.get("ports", []):
+                        flat = dict(raw_port)
+                        flat["serial"] = dev_serial
+                        port = cls.from_dashboard(flat)
+                        if port_id and port.port_id != port_id:
+                            continue
+                        if enabled is not None and port.enabled != enabled:
+                            continue
+                        if port_type and port.type != port_type:
+                            continue
+                        if vlan is not None and port.vlan != vlan:
+                            continue
+                        ports.append(port)
+                return ports
+
+            raise ValueError("source='meraki' requires either serial or org_id.")
 
         if source == "database":
             from merakisync.database import get_engine
             engine = get_engine()
-            where: list[str] = ["serial = :serial"]
-            params: dict = {"serial": serial}
+            where: list[str] = []
+            params: dict = {}
 
             if ts and ts != "all":
                 where += ["active_from <= :ts", "(active_to > :ts OR active_to IS NULL)"]
@@ -148,6 +179,9 @@ class Switchport(MerakiObj):
             elif ts != "all":
                 where.append("active_to IS NULL")
 
+            if serial:
+                where.append("serial = :serial")
+                params["serial"] = serial
             if port_id:
                 where.append("port_id = :port_id")
                 params["port_id"] = port_id
@@ -161,9 +195,10 @@ class Switchport(MerakiObj):
                 where.append("vlan = :vlan")
                 params["vlan"] = vlan
 
+            where_sql = " AND ".join(where) if where else "TRUE"
             sql = text(
-                f"SELECT * FROM {cls._qualified()} WHERE {' AND '.join(where)}"
-                " ORDER BY port_id"
+                f"SELECT * FROM {cls._qualified()} WHERE {where_sql}"
+                " ORDER BY serial, port_id"
             )
             with engine.connect() as conn:
                 rows = conn.execute(sql, params).mappings().all()

@@ -178,7 +178,14 @@ class Switchport(MerakiObj):
     @classmethod
     def sync(cls: Type[I], serial: str) -> list[I]:
         """Fetch all ports for device *serial* from Meraki and upsert into the database."""
-        ports = cls.get(serial, source="meraki")
+        from meraki.exceptions import APIError
+        try:
+            ports = cls.get(serial, source="meraki")
+        except APIError as exc:
+            if exc.status == 400 and "does not belong to a network" in str(exc):
+                logger.debug("Device %s not in a network — skipping switchport sync.", serial)
+                return []
+            raise
         if not ports:
             logger.debug("No switchports returned for device %s.", serial)
             return []

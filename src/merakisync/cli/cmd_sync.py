@@ -171,6 +171,9 @@ def run(flags: SyncFlags | None = None) -> None:
                 logger.info("  No switch devices found in org %s.", org_id)
             else:
                 for device in switch_devices:
+                    if device.network_id is None:
+                        logger.debug("    Device %s has no network — skipping.", device.serial)
+                        continue
                     logger.debug("    Syncing ports for device %s...", device.serial)
                     Switchport.sync(device.serial)
 

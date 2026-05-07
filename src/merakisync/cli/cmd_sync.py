@@ -106,9 +106,18 @@ def run(flags: SyncFlags | None = None) -> None:
         # --------------------------------------------------------------
         # Networks → per-network resources
         # --------------------------------------------------------------
-        need_networks = do_all or flags.networks or flags.switchports \
-            or flags.dhcp_server_policy or flags.l3_firewall_rules or flags.vlans \
-            or flags.ssids
+        # --------------------------------------------------------------
+        # Switchports  (org-level, no network dependency)
+        # --------------------------------------------------------------
+        if do_all or flags.switchports:
+            logger.info("  Syncing switchports for org %s...", org_id)
+            Switchport.sync(org_id)
+
+        # --------------------------------------------------------------
+        # Networks → per-network resources
+        # --------------------------------------------------------------
+        need_networks = do_all or flags.networks or flags.dhcp_server_policy \
+            or flags.l3_firewall_rules or flags.vlans or flags.ssids
 
         if not need_networks:
             continue
@@ -156,12 +165,5 @@ def run(flags: SyncFlags | None = None) -> None:
             if (do_all or flags.ssids) and "wireless" in product_types:
                 logger.debug("    Syncing SSIDs for network %s...", net_id)
                 Ssid.sync(net_id)
-
-        # --------------------------------------------------------------
-        # Switchports  (org-level, single API call)
-        # --------------------------------------------------------------
-        if do_all or flags.switchports:
-            logger.info("  Syncing switchports for org %s...", org_id)
-            Switchport.sync(org_id)
 
     logger.info("Sync complete.")

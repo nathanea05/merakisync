@@ -31,26 +31,20 @@ class Switchport(MerakiObj):
     __mapping_override__: ClassVar[dict[str, str]] = {
         "port_id": "portId",
         "poe_enabled": "poeEnabled",
-        "isolation_enabled": "isolationEnabled",
         "rstp_enabled": "rstpEnabled",
         "stp_guard": "stpGuard",
         "link_negotiation": "linkNegotiation",
-        "port_schedule_id": "portScheduleId",
         "access_policy_type": "accessPolicyType",
-        "access_policy_number": "accessPolicyNumber",
-        "mac_allow_list": "macAllowList",
         "sticky_mac_allow_list": "stickyMacAllowList",
         "sticky_mac_allow_list_limit": "stickyMacAllowListLimit",
-        "storm_control_enabled": "stormControlEnabled",
-        "adaptive_policy_group_id": "adaptivePolicyGroupId",
-        "peer_sgt_capable": "peerSgtCapable",
-        "flexible_stacking_enabled": "flexibleStackingEnabled",
-        "dai_trusted": "daiTrusted",
         "voice_vlan": "voiceVlan",
         "allowed_vlans": "allowedVlans",
     }
 
-    # Business fields — serial is injected; port_id comes from the API
+    # Business fields — serial is injected; port_id comes from the API.
+    # Fields are limited to those returned by getOrganizationSwitchPortsBySwitch.
+    # Fields only available via the per-device endpoint (isolationEnabled,
+    # stormControlEnabled, daiTrusted, udld, etc.) are intentionally omitted.
     serial: str
     port_id: str
     name: str | None = None
@@ -61,22 +55,12 @@ class Switchport(MerakiObj):
     vlan: int | None = None
     voice_vlan: int | None = None
     allowed_vlans: str | None = None
-    isolation_enabled: bool | None = None
     rstp_enabled: bool | None = None
     stp_guard: str | None = None
     link_negotiation: str | None = None
-    port_schedule_id: str | None = None
-    udld: str | None = None
     access_policy_type: str | None = None
-    access_policy_number: int | None = None
-    mac_allow_list: list[str] | None = None
     sticky_mac_allow_list: list[str] | None = None
     sticky_mac_allow_list_limit: int | None = None
-    storm_control_enabled: bool | None = None
-    adaptive_policy_group_id: str | None = None
-    peer_sgt_capable: bool | None = None
-    flexible_stacking_enabled: bool | None = None
-    dai_trusted: bool | None = None
 
     # SCD2 versioning
     active_from: datetime | None = None
@@ -232,6 +216,18 @@ class Switchport(MerakiObj):
             logger.warning("No switchports returned for org %s.", org_id)
             return []
 
+        logger.debug(
+            "Upserting %d switchport(s) across %d device(s) for org %s.",
+            len(ports),
+            len(response),
+            org_id,
+        )
         counts = cls.upsert_many(ports)
-        logger.info("Switchports synced for org %s: %s", org_id, counts)
+        logger.info(
+            "Switchports synced for org %s — %d new, %d unchanged, %d changed.",
+            org_id,
+            counts.get("inserted", 0),
+            counts.get("updated", 0),
+            counts.get("expired+inserted", 0),
+        )
         return ports

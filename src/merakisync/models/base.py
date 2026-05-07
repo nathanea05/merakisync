@@ -19,6 +19,14 @@ I = TypeVar("I", bound="MerakiObj")
 # comparing whether the business data on a row has changed.
 _VERSIONING_FIELDS: frozenset[str] = frozenset({"active_from", "active_to", "last_seen"})
 
+# Batches larger than this use a single bulk SELECT to prefetch all active rows
+# instead of one SELECT per row.  Below the threshold the per-row path is used
+# since a full-table fetch would be wasteful for small syncs.
+_BULK_PREFETCH_THRESHOLD: int = 500
+
+# Sentinel meaning "no prefetched value available; fall back to a live SELECT".
+_NOT_PREFETCHED: object = object()
+
 
 def _now() -> datetime:
     return datetime.now(tz=timezone.utc)
@@ -200,8 +208,18 @@ class MerakiObj:
             conn.commit()
         return result
 
-    def _upsert_with_conn(self, conn: Connection) -> str:
-        """Execute the upsert inside an already-open connection."""
+    def _upsert_with_conn(
+        self,
+        conn: Connection,
+        prefetched_existing: Any = _NOT_PREFETCHED,
+    ) -> str:
+        """Execute the upsert inside an already-open connection.
+
+        Args:
+            prefetched_existing: When supplied by upsert_many's bulk-prefetch
+                path, the existing active row dict (or None if not found).
+                Defaults to _NOT_PREFETCHED, which triggers a live SELECT.
+        """
         cls = self.__class__
 
         if not is_dataclass(self):
@@ -215,7 +233,7 @@ class MerakiObj:
             raise ValueError(f"{cls.__name__} missing required PK field(s): {missing}")
 
         if cls.__versioned__:
-            return self._scd2_upsert(conn, row)
+            return self._scd2_upsert(conn, row, prefetched_existing=prefetched_existing)
         else:
             return self._simple_upsert(conn, row)
 
@@ -223,17 +241,25 @@ class MerakiObj:
     # SCD2 logic
     # ------------------------------------------------------------------
 
-    def _scd2_upsert(self, conn: Connection, row: dict[str, Any]) -> str:
+    def _scd2_upsert(
+        self,
+        conn: Connection,
+        row: dict[str, Any],
+        prefetched_existing: Any = _NOT_PREFETCHED,
+    ) -> str:
         cls = self.__class__
         now = _now()
 
         pk_where, pk_params = _build_pk_where(cls.__pk__, row)
         active_where = f"{pk_where} AND active_to IS NULL"
 
-        existing = conn.execute(
-            text(f"SELECT * FROM {cls._qualified()} WHERE {active_where} LIMIT 1"),
-            pk_params,
-        ).mappings().first()
+        if prefetched_existing is _NOT_PREFETCHED:
+            existing = conn.execute(
+                text(f"SELECT * FROM {cls._qualified()} WHERE {active_where} LIMIT 1"),
+                pk_params,
+            ).mappings().first()
+        else:
+            existing = prefetched_existing
 
         if existing is None:
             _insert_row(conn, cls._qualified(), row, active_from=now, last_seen=now)
@@ -300,6 +326,115 @@ class MerakiObj:
     # ------------------------------------------------------------------
 
     @classmethod
+    def _prefetch_active_rows(cls, conn: Connection) -> dict[tuple, dict[str, Any]]:
+        """Fetch every currently-active row from the table in one query.
+
+        Returns a dict keyed by PK tuple so callers can look up existing rows
+        in O(1) instead of issuing one SELECT per upserted object.
+        """
+        result = conn.execute(
+            text(f"SELECT * FROM {cls._qualified()} WHERE active_to IS NULL")
+        ).mappings().all()
+        pk_cols = cls.__pk__
+        return {
+            tuple(dict(row)[col] for col in pk_cols): dict(row)
+            for row in result
+        }
+
+    @classmethod
+    def _bulk_scd2_upsert(
+        cls,
+        conn: Connection,
+        rows: Sequence["MerakiObj"],
+        prefetch_map: dict[tuple, dict[str, Any]],
+    ) -> dict[str, int]:
+        """Categorise rows then write in bulk using executemany.
+
+        Replaces the per-row loop for large SCD2 batches:
+          1. Python loop to bucket rows → new / unchanged / changed  (no DB I/O)
+          2. executemany UPDATE last_seen  for unchanged rows
+          3. executemany UPDATE active_to  to expire changed rows
+          4. executemany INSERT           for new rows + new versions of changed rows
+        """
+        now = _now()
+        pk_cols = cls.__pk__
+        qualified = cls._qualified()
+
+        new_rows: list[dict[str, Any]] = []
+        unchanged_pk_params: list[dict[str, Any]] = []
+        changed_old_pk_params: list[dict[str, Any]] = []
+        changed_new_rows: list[dict[str, Any]] = []
+
+        for obj in rows:
+            row_dict = obj.to_dict()
+            pk_tuple = tuple(row_dict.get(col) for col in pk_cols)
+            existing = prefetch_map.get(pk_tuple)
+
+            if existing is None:
+                new_rows.append(row_dict)
+            else:
+                current_data = {
+                    k: v for k, v in existing.items()
+                    if k not in set(pk_cols) | _VERSIONING_FIELDS
+                }
+                if _data_equal(current_data, obj._data_fields()):
+                    unchanged_pk_params.append({f"pk_{col}": row_dict[col] for col in pk_cols})
+                else:
+                    changed_old_pk_params.append({f"pk_{col}": row_dict[col] for col in pk_cols})
+                    changed_new_rows.append(row_dict)
+
+        logger.debug(
+            "Categorised %d row(s): %d new, %d unchanged, %d changed.",
+            len(rows), len(new_rows), len(unchanged_pk_params), len(changed_old_pk_params),
+        )
+
+        # WHERE clause shared by all bulk UPDATE statements (assumes non-NULL PKs,
+        # which is enforced by the upsert validation path).
+        pk_where = " AND ".join(f"{col} = :pk_{col}" for col in pk_cols)
+        active_where = f"{pk_where} AND active_to IS NULL"
+
+        if unchanged_pk_params:
+            conn.execute(
+                text(f"UPDATE {qualified} SET last_seen = :ts WHERE {active_where}"),
+                [{"ts": now, **p} for p in unchanged_pk_params],
+            )
+
+        if changed_old_pk_params:
+            conn.execute(
+                text(f"UPDATE {qualified} SET active_to = :ts WHERE {active_where}"),
+                [{"ts": now, **p} for p in changed_old_pk_params],
+            )
+
+        all_inserts = new_rows + changed_new_rows
+        if all_inserts:
+            field_names = [
+                f.name for f in dataclass_fields(cls)  # type: ignore[arg-type]
+                if f.name not in _VERSIONING_FIELDS
+            ]
+            all_cols = field_names + ["active_from", "active_to", "last_seen"]
+            col_list = ", ".join(all_cols)
+            val_list = ", ".join(f":{c}" for c in all_cols)
+
+            insert_params: list[dict[str, Any]] = []
+            for row_dict in all_inserts:
+                data: dict[str, Any] = {k: _db_value(row_dict.get(k)) for k in field_names}
+                data["active_from"] = now
+                data["active_to"] = None
+                data["last_seen"] = now
+                insert_params.append(data)
+
+            conn.execute(
+                text(f"INSERT INTO {qualified} ({col_list}) VALUES ({val_list})"),
+                insert_params,
+            )
+
+        return {
+            "inserted": len(new_rows),
+            "updated": len(unchanged_pk_params),
+            "expired+inserted": len(changed_old_pk_params),
+        }
+
+    @classmethod
     def upsert_many(
         cls,
         rows: Sequence[MerakiObj],
@@ -307,8 +442,12 @@ class MerakiObj:
     ) -> dict[str, int]:
         """Upsert a sequence of objects in a single connection and transaction.
 
-        This is far more efficient than calling .upsert() per row because it
-        avoids opening a new database connection for every object.
+        For SCD2 models with batches larger than _BULK_PREFETCH_THRESHOLD:
+          - Prefetches all active rows in one SELECT.
+          - Categorises every row in Python (no per-row DB reads).
+          - Writes all changes in four executemany calls.
+
+        For smaller batches or non-SCD2 models, falls back to a per-row loop.
 
         Returns:
             A dict with counts: {"inserted": N, "updated": N, "expired+inserted": N,
@@ -321,11 +460,25 @@ class MerakiObj:
             from merakisync.database import get_engine
             engine = get_engine()
 
+        total = len(rows)
         counts: dict[str, int] = {}
+
         with engine.connect() as conn:
-            for obj in rows:
-                result = obj._upsert_with_conn(conn)
-                counts[result] = counts.get(result, 0) + 1
+            if cls.__versioned__ and total >= _BULK_PREFETCH_THRESHOLD:
+                logger.debug(
+                    "Prefetching active rows for %s (batch size %d).", cls.__name__, total
+                )
+                prefetch_map = cls._prefetch_active_rows(conn)
+                logger.debug("Prefetched %d active row(s).", len(prefetch_map))
+                counts = cls._bulk_scd2_upsert(conn, rows, prefetch_map)
+            else:
+                log_interval = max(1_000, total // 10)
+                for i, obj in enumerate(rows, 1):
+                    result = obj._upsert_with_conn(conn)
+                    counts[result] = counts.get(result, 0) + 1
+                    if i % log_interval == 0:
+                        logger.debug("  ... %d / %d rows processed.", i, total)
+
             conn.commit()
 
         return counts
@@ -386,6 +539,12 @@ def _data_equal(existing: dict[str, Any], new: dict[str, Any]) -> bool:
                 ev = json.loads(ev)
             except (json.JSONDecodeError, TypeError):
                 pass
+        # NULL in DB is semantically equal to an empty list or dict from the API
+        # (e.g. tags: NULL vs tags: [])
+        if ev is None and isinstance(nv, (list, dict)) and len(nv) == 0:
+            continue
+        if nv is None and isinstance(ev, (list, dict)) and len(ev) == 0:
+            continue
         if ev != nv:
             return False
     return True

@@ -255,3 +255,90 @@ class TestChangedFields:
         w = _Widget(id="w1", label="original")
         w.label = "updated"
         assert w.label == "updated"
+
+
+# ---------------------------------------------------------------------------
+# _bulk_scd2_upsert  (categorisation logic — no real DB required)
+# ---------------------------------------------------------------------------
+
+class TestBulkScd2Upsert:
+    """Verify the Python categorisation logic without a real database connection.
+
+    We use a mock connection that captures every (statement, params) call so
+    we can assert exactly which executemany batches were issued.
+    """
+
+    class _MockConn:
+        def __init__(self):
+            self.calls: list[tuple] = []
+
+        def execute(self, stmt, params=None):
+            self.calls.append((str(stmt), params))
+
+    def _make_prefetch(self, widget: _Widget) -> dict:
+        """Return a prefetch_map entry for a widget as it would come from the DB."""
+        from merakisync.models.base import _VERSIONING_FIELDS
+        return {(widget.id,): {
+            "id": widget.id,
+            "widget_type": widget.widget_type,
+            "is_active": widget.is_active,
+            "label": widget.label,
+            "metadata": widget.metadata,
+        }}
+
+    def test_new_row_issues_insert(self):
+        conn = self._MockConn()
+        w = _Widget(id="new1", label="hello")
+        counts = _Widget._bulk_scd2_upsert(conn, [w], prefetch_map={})
+        assert counts["inserted"] == 1
+        assert counts["updated"] == 0
+        assert counts["expired+inserted"] == 0
+        # Should be exactly one execute call: the INSERT
+        assert any("INSERT" in call[0].upper() for call in conn.calls)
+
+    def test_unchanged_row_issues_last_seen_update(self):
+        conn = self._MockConn()
+        w = _Widget(id="w1", label="hello")
+        prefetch = self._make_prefetch(w)
+        counts = _Widget._bulk_scd2_upsert(conn, [w], prefetch_map=prefetch)
+        assert counts["updated"] == 1
+        assert counts["inserted"] == 0
+        assert counts["expired+inserted"] == 0
+        update_calls = [c for c in conn.calls if "UPDATE" in c[0].upper()]
+        assert len(update_calls) == 1
+        assert "last_seen" in update_calls[0][0]
+
+    def test_changed_row_issues_expire_and_insert(self):
+        conn = self._MockConn()
+        old = _Widget(id="w1", label="old")
+        prefetch = self._make_prefetch(old)
+        new = _Widget(id="w1", label="new")
+        counts = _Widget._bulk_scd2_upsert(conn, [new], prefetch_map=prefetch)
+        assert counts["expired+inserted"] == 1
+        assert counts["inserted"] == 0
+        assert counts["updated"] == 0
+        update_calls = [c for c in conn.calls if "UPDATE" in c[0].upper()]
+        assert len(update_calls) == 1
+        assert "active_to" in update_calls[0][0]
+        insert_calls = [c for c in conn.calls if "INSERT" in c[0].upper()]
+        assert len(insert_calls) == 1
+
+    def test_mixed_batch_issues_correct_counts(self):
+        conn = self._MockConn()
+        existing_unchanged = _Widget(id="same", label="same")
+        existing_changed = _Widget(id="changed", label="old")
+        new_widget = _Widget(id="brand_new", label="new")
+
+        prefetch = {}
+        prefetch.update(self._make_prefetch(existing_unchanged))
+        prefetch.update(self._make_prefetch(existing_changed))
+
+        rows = [
+            _Widget(id="same", label="same"),        # unchanged
+            _Widget(id="changed", label="updated"),  # changed
+            new_widget,                               # new
+        ]
+        counts = _Widget._bulk_scd2_upsert(conn, rows, prefetch_map=prefetch)
+        assert counts["inserted"] == 1
+        assert counts["updated"] == 1
+        assert counts["expired+inserted"] == 1

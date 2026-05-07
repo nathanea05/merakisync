@@ -158,23 +158,10 @@ def run(flags: SyncFlags | None = None) -> None:
                 Ssid.sync(net_id)
 
         # --------------------------------------------------------------
-        # Switchports  (per switch device)
+        # Switchports  (org-level, single API call)
         # --------------------------------------------------------------
         if do_all or flags.switchports:
             logger.info("  Syncing switchports for org %s...", org_id)
-            switch_devices = Device.get(
-                org_id,
-                source="database",
-                product_types_include=["switch"],
-            )
-            if not switch_devices:
-                logger.info("  No switch devices found in org %s.", org_id)
-            else:
-                for device in switch_devices:
-                    if device.network_id is None:
-                        logger.debug("    Device %s has no network — skipping.", device.serial)
-                        continue
-                    logger.debug("    Syncing ports for device %s...", device.serial)
-                    Switchport.sync(device.serial)
+            Switchport.sync(org_id)
 
     logger.info("Sync complete.")

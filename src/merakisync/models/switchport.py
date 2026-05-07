@@ -176,20 +176,27 @@ class Switchport(MerakiObj):
     # ------------------------------------------------------------------
 
     @classmethod
-    def sync(cls: Type[I], serial: str) -> list[I]:
-        """Fetch all ports for device *serial* from Meraki and upsert into the database."""
-        from meraki.exceptions import APIError
-        try:
-            ports = cls.get(serial, source="meraki")
-        except APIError as exc:
-            if exc.status == 400 and "does not belong to a network" in str(exc):
-                logger.debug("Device %s not in a network — skipping switchport sync.", serial)
-                return []
-            raise
+    def sync(cls: Type[I], org_id: str) -> list[I]:
+        """Fetch all switchports for *org_id* in a single API call and upsert into the database."""
+        from merakisync.dashboard import get_dashboard
+        dashboard = get_dashboard()
+
+        response = dashboard.switch.getOrganizationSwitchPortsBySwitch(
+            org_id, total_pages="all"
+        )
+
+        ports: list[I] = []
+        for device_data in response:
+            serial = device_data.get("serial", "")
+            for raw_port in device_data.get("ports", []):
+                flat = dict(raw_port)
+                flat["serial"] = serial
+                ports.append(cls.from_dashboard(flat))
+
         if not ports:
-            logger.debug("No switchports returned for device %s.", serial)
+            logger.warning("No switchports returned for org %s.", org_id)
             return []
 
         counts = cls.upsert_many(ports)
-        logger.debug("Switchports synced for device %s: %s", serial, counts)
+        logger.info("Switchports synced for org %s: %s", org_id, counts)
         return ports

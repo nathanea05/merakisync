@@ -29,7 +29,7 @@ class DhcpServerPolicy(MerakiObj):
 
     # Business fields
     network_id: str
-    default_policy: str | None = None
+    default_policy: Literal["block", "allow"] | None = None
     blocked_servers: list[str] | None = None
     allowed_servers: list[str] | None = None
     always_allowed_servers: list[str] | None = None

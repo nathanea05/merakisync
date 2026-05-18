@@ -8,6 +8,8 @@ Sync Meraki Dashboard data into PostgreSQL and retrieve typed Python objects —
 
 - [Requirements](#requirements)
 - [Installation](#installation)
+  - [Binary — scheduled sync on a server](#binary--scheduled-sync-on-a-server)
+  - [Python library — scripting and automation](#python-library--scripting-and-automation)
 - [PostgreSQL Setup](#postgresql-setup)
 - [Configuration](#configuration)
 - [Running Migrations](#running-migrations)
@@ -21,17 +23,47 @@ Sync Meraki Dashboard data into PostgreSQL and retrieve typed Python objects —
 
 ## Requirements
 
-- Python 3.11 or later
 - PostgreSQL 13 or later
 - A Meraki Dashboard API key ([how to generate one](https://documentation.meraki.com/General_Administration/Other_Topics/Cisco_Meraki_Dashboard_API#Enable_API_Access))
+- Python 3.11 or later *(library install only — not required for the binary)*
 
 ---
 
 ## Installation
 
+### Binary — scheduled sync on a server
+
+The binary is a self-contained executable that requires no Python installation. It is the recommended choice for running scheduled syncs on a server.
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.sh | sh
+```
+
+This installs `merakisync` to `/usr/local/bin` (or `~/.local/bin` if you do not have write access to `/usr/local/bin`). On Linux servers without write access to `/usr/local/bin`, the script will prompt for `sudo`.
+
+To pin a specific version:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.sh | sh -s -- --version v1.0.0
+```
+
+To install to a custom directory:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.sh | sh -s -- --install-dir /opt/bin
+```
+
+The binary provides the full CLI: `merakisync init`, `merakisync migrate`, and `merakisync sync`. It does **not** expose importable Python objects — use the library install below if you need those.
+
+### Python library — scripting and automation
+
+Install via pip to import merakisync objects directly in your own Python scripts:
+
 ```bash
 pip install merakisync
 ```
+
+The pip install also provides the `merakisync` CLI command alongside the importable API.
 
 To install from source:
 
@@ -152,6 +184,7 @@ merakisync sync --dhcp-server-policy
 merakisync sync --alerts
 merakisync sync --l3-firewall-rules
 merakisync sync --vlans
+merakisync sync --ssids
 ```
 
 Flags can be combined. For example, to sync only networks and devices:
@@ -224,6 +257,8 @@ systemctl enable --now merakisync.timer
 ---
 
 ## Using the Library
+
+> **Requires the Python library install** (`pip install merakisync`). The binary does not expose importable objects.
 
 Once data has been synced, you can retrieve typed Python objects in any script without configuring API or database credentials again.
 
@@ -319,13 +354,14 @@ Environment variables take precedence over values in the config file.
 | Organization | `meraki.organization` | Org-level | |
 | Network | `meraki.network` | Per-org | |
 | Device | `meraki.device` | Per-org | All product types |
-| Switchport | `meraki.switchport` | Per-device | MS switches only |
+| Switchport | `meraki.switchport` | Per-org | MS switches only |
 | Uplink | `meraki.uplink` | Per-org | MX/Z devices |
 | UplinkUsage | `meraki.uplink_usage` | Per-org | Monthly bandwidth totals; sync at least every 14 days |
 | DhcpServerPolicy | `meraki.dhcp_server_policy` | Per-network | Switch networks only |
 | Alert | `meraki.alert` | Per-org | Assurance alerts |
 | L3FirewallRule | `meraki.l3_firewall_rule` | Per-network | MX appliance networks |
 | Vlan | `meraki.vlan` | Per-network | MX appliance networks |
+| Ssid | `meraki.ssid` | Per-network | Wireless networks only |
 
 All resources except `UplinkUsage` use SCD2 versioning — historical state is preserved when data changes. `UplinkUsage` stores cumulative monthly byte totals and updates in place.
 

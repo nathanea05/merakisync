@@ -4,7 +4,12 @@
 
 ## Purpose
 
-You are assisting in building **merakisync**: a production-grade Python library that syncs Meraki Dashboard data into PostgreSQL and retrieves it as typed Python objects.
+You are assisting in building **merakisync**: a tool that syncs Meraki Dashboard data into PostgreSQL and exposes it as typed Python objects.
+
+merakisync serves two audiences:
+
+1. **Sysadmins** — install the self-contained binary via `curl` and run `merakisync sync` on a schedule. No Python required.
+2. **Automation engineers** — install via `pip install merakisync` and import typed objects (`Organization`, `Network`, `Switchport`, etc.) directly in their scripts without re-implementing API or database connectivity.
 
 This library is the data foundation for a future tool called **merakiops**, which will use these objects for automation, reporting, and remediation workflows.
 
@@ -30,7 +35,7 @@ The developer is a network engineer managing hundreds of Meraki networks who wri
 This project handles exactly two concerns:
 
 1. Syncing Meraki Dashboard data → PostgreSQL.
-2. Retrieving that data as typed Python objects.
+2. Retrieving that data as typed Python objects (from the DB or directly from the API).
 
 Do not add alerting, remediation, scheduling, dashboarding, or any other feature. If it does not directly serve sync or retrieval, it does not belong here.
 
@@ -55,9 +60,40 @@ Every sync operation must be safe to run multiple times with the same result. Ne
 
 ---
 
+## Distribution
+
+merakisync ships in two forms. Both use the same source code and configuration.
+
+**Binary (PyInstaller)** — a self-contained executable for sysadmins running scheduled syncs. Installed via `install.sh`. No Python required on the target machine. Provides the CLI only (`init`, `migrate`, `sync`). Does not expose importable Python objects.
+
+**Python library (pip)** — installed via `pip install merakisync`. Provides both the CLI and importable objects (`from merakisync import Organization, Network, ...`) for use in automation scripts.
+
+### Release artifact naming
+
+PyInstaller must be run on each target platform. Release binaries are named:
+
+| Platform | Binary name |
+|---|---|
+| macOS Apple Silicon | `merakisync-darwin-arm64` |
+| macOS Intel | `merakisync-darwin-x86_64` |
+| Linux x86_64 | `merakisync-linux-x86_64` |
+| Linux ARM64 | `merakisync-linux-arm64` |
+
+Each release also includes a `checksums.txt` with SHA-256 hashes in `<hash>  <name>` format.
+
+### PyInstaller spec
+
+`merakisync.spec` at the project root controls the frozen build. When adding a new dependency to `pyproject.toml`, check whether its modules are loaded dynamically (via string, entry point, or `importlib`) — if so, add them to `hiddenimports` in the spec. SQLAlchemy dialects, Alembic internals, and Mako are examples of modules that must be listed explicitly.
+
+The venv used to build **must** have all project dependencies installed (`pip install -e .`) before running `pyinstaller merakisync.spec`.
+
+---
+
 ## Project structure
 
 ```
+install.sh               Curl-installable binary installer for macOS and Linux.
+merakisync.spec          PyInstaller spec for the self-contained binary build.
 src/merakisync/
 ├── __init__.py          Thin public re-exports. No business logic.
 ├── __about__.py         Version string only.
@@ -85,9 +121,11 @@ src/merakisync/
 │   ├── uplink_usage.py
 │   ├── dhcp_server_policy.py
 │   ├── alert.py
-│   └── l3_firewall_rule.py
+│   ├── l3_firewall_rule.py
+│   ├── vlan.py
+│   └── ssid.py
 └── utils/
-    ├── casing.py        camel_to_snake.
+    ├── casing.py        camel_to_snake / snake_to_camel.
     ├── confirm.py       y/n prompt.
     ├── prompt.py        General input prompt.
     ├── filter_array.py  Include/exclude set filtering.

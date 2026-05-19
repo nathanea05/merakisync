@@ -14,6 +14,9 @@ Sync Meraki Dashboard data into PostgreSQL and retrieve typed Python objects —
 - [Configuration](#configuration)
 - [Running Migrations](#running-migrations)
 - [Syncing Data](#syncing-data)
+  - [Setting up a service account](#setting-up-a-service-account)
+  - [Scheduling with systemd (recommended)](#scheduling-with-systemd-recommended)
+  - [Scheduling with cron](#scheduling-with-cron)
 - [Using the Library](#using-the-library)
 - [Environment Variables](#environment-variables)
 - [Supported Resources](#supported-resources)
@@ -23,6 +26,7 @@ Sync Meraki Dashboard data into PostgreSQL and retrieve typed Python objects —
 
 ## Requirements
 
+- **Ubuntu 22.04 or later** — merakisync is developed and tested on Ubuntu. It may work on other Linux distributions or macOS, but these are not supported.
 - PostgreSQL 13 or later
 - A Meraki Dashboard API key ([how to generate one](https://documentation.meraki.com/General_Administration/Other_Topics/Cisco_Meraki_Dashboard_API#Enable_API_Access))
 - Python 3.11 or later *(library install only — not required for the binary)*
@@ -219,14 +223,41 @@ Output is plain text with no colour codes, making it safe to redirect or capture
 
 > **Important:** `UplinkUsage` uses an incremental sync strategy — each run queries only the delta since the last sync and accumulates the bytes onto the stored monthly total. The Meraki API enforces a 14-day maximum query window. If more than 14 days pass between syncs, the data for that gap is unrecoverable and a warning is logged. Run at least once every 14 days to guarantee accurate monthly usage totals.
 
-### Scheduling with cron
+### Setting up a service account
 
-```cron
-# Sync all data daily at midnight UTC
-0 0 * * * /usr/local/bin/merakisync sync >> /var/log/merakisync.log 2>&1
+Run merakisync under a dedicated system account rather than your own user or root. The steps below set up that account, install the binary, and configure merakisync — all on the Ubuntu server that will run the scheduled sync.
+
+#### Step 1 — create the service account
+
+```bash
+sudo useradd --system --shell /usr/sbin/nologin --create-home --home-dir /var/lib/merakisync merakisync
 ```
 
-### Scheduling with systemd
+This creates a system account with no login shell and a home directory at `/var/lib/merakisync`. merakisync will store its config file there.
+
+#### Step 2 — install the binary
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.sh | sudo sh -s -- --install-dir /usr/local/bin
+```
+
+#### Step 3 — run the setup wizard as the service account
+
+```bash
+sudo -u merakisync merakisync init
+```
+
+The wizard will prompt for your Meraki API key and PostgreSQL connection details, test both connections, and save the config to `/var/lib/merakisync/.config/merakisync/config.toml`.
+
+#### Step 4 — apply database migrations
+
+```bash
+sudo -u merakisync merakisync migrate
+```
+
+### Scheduling with systemd (recommended)
+
+#### Step 1 — create the service unit
 
 Create `/etc/systemd/system/merakisync.service`:
 
@@ -237,6 +268,7 @@ After=network.target
 
 [Service]
 Type=oneshot
+User=merakisync
 ExecStart=/usr/local/bin/merakisync sync
 StandardOutput=journal
 StandardError=journal
@@ -244,6 +276,8 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+#### Step 2 — create the timer unit
 
 Create `/etc/systemd/system/merakisync.timer`:
 
@@ -259,8 +293,45 @@ Persistent=true
 WantedBy=timers.target
 ```
 
+#### Step 3 — enable and start the timer
+
 ```bash
-systemctl enable --now merakisync.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now merakisync.timer
+```
+
+#### Step 4 — verify
+
+```bash
+systemctl status merakisync.timer
+```
+
+You should see `Active: active (waiting)` and the next trigger time listed. To run a sync immediately and check the output:
+
+```bash
+sudo systemctl start merakisync.service
+journalctl -u merakisync.service -n 50
+```
+
+### Scheduling with cron
+
+If you prefer cron over systemd, install the crontab for the service account:
+
+```bash
+sudo crontab -u merakisync -e
+```
+
+Add the following line:
+
+```cron
+0 0 * * * /usr/local/bin/merakisync sync >> /var/log/merakisync.log 2>&1
+```
+
+Create the log file and give the service account write access:
+
+```bash
+sudo touch /var/log/merakisync.log
+sudo chown merakisync:merakisync /var/log/merakisync.log
 ```
 
 ---

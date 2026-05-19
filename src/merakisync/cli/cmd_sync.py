@@ -79,38 +79,35 @@ def run(flags: SyncFlags | None = None) -> None:
         # Alerts  (org-level, no network dependency)
         # --------------------------------------------------------------
         if do_all or flags.alerts:
-            logger.info("  Syncing alerts for org %s...", org_id)
+            logger.info("  Syncing alerts for org %s (%s)...", org_id, org.name)
             Alert.sync(org_id)
 
         # --------------------------------------------------------------
         # Uplinks  (org-level)
         # --------------------------------------------------------------
         if do_all or flags.uplinks:
-            logger.info("  Syncing uplinks for org %s...", org_id)
+            logger.info("  Syncing uplinks for org %s (%s)...", org_id, org.name)
             Uplink.sync(org_id)
 
         # --------------------------------------------------------------
         # Uplink usage  (org-level)
         # --------------------------------------------------------------
         if do_all or flags.uplink_usage:
-            logger.info("  Syncing uplink usage for org %s...", org_id)
+            logger.info("  Syncing uplink usage for org %s (%s)...", org_id, org.name)
             UplinkUsage.sync(org_id)
 
         # --------------------------------------------------------------
         # Devices  (org-level)
         # --------------------------------------------------------------
         if do_all or flags.devices:
-            logger.info("  Syncing devices for org %s...", org_id)
+            logger.info("  Syncing devices for org %s (%s)...", org_id, org.name)
             Device.sync(org_id)
 
-        # --------------------------------------------------------------
-        # Networks → per-network resources
-        # --------------------------------------------------------------
         # --------------------------------------------------------------
         # Switchports  (org-level, no network dependency)
         # --------------------------------------------------------------
         if do_all or flags.switchports:
-            logger.info("  Syncing switchports for org %s...", org_id)
+            logger.info("  Syncing switchports for org %s (%s)...", org_id, org.name)
             Switchport.sync(org_id)
 
         # --------------------------------------------------------------
@@ -123,47 +120,48 @@ def run(flags: SyncFlags | None = None) -> None:
             continue
 
         if do_all or flags.networks:
-            logger.info("  Syncing networks for org %s...", org_id)
+            logger.info("  Syncing networks for org %s (%s)...", org_id, org.name)
             networks = Network.sync(org_id)
         else:
             networks = Network.get(org_id, source="meraki")
 
         if not networks:
-            logger.warning("  No networks found for org %s.", org_id)
+            logger.warning("  No networks found for org %s (%s).", org_id, org.name)
             continue
 
-        logger.info("  Found %d network(s) in org %s.", len(networks), org_id)
+        logger.info("  Found %d network(s) in org %s (%s).", len(networks), org_id, org.name)
 
         for network in networks:
             net_id = network.id
+            net_name = network.name
             product_types = set(network.product_types or [])
 
             # ----------------------------------------------------------
             # DHCP server policy  (switch networks only)
             # ----------------------------------------------------------
             if (do_all or flags.dhcp_server_policy) and "switch" in product_types:
-                logger.debug("    Syncing DHCP server policy for network %s...", net_id)
+                logger.debug("    Syncing DHCP server policy for network %s (%s)...", net_id, net_name)
                 DhcpServerPolicy.sync(net_id)
 
             # ----------------------------------------------------------
             # L3 firewall rules  (appliance networks only)
             # ----------------------------------------------------------
             if (do_all or flags.l3_firewall_rules) and "appliance" in product_types:
-                logger.debug("    Syncing L3 firewall rules for network %s...", net_id)
+                logger.debug("    Syncing L3 firewall rules for network %s (%s)...", net_id, net_name)
                 L3FirewallRule.sync(net_id)
 
             # ----------------------------------------------------------
             # VLANs  (appliance networks only)
             # ----------------------------------------------------------
             if (do_all or flags.vlans) and "appliance" in product_types:
-                logger.info("    Syncing VLANs for network %s...", net_id)
+                logger.info("    Syncing VLANs for network %s (%s)...", net_id, net_name)
                 Vlan.sync(net_id)
 
             # ----------------------------------------------------------
             # SSIDs  (wireless networks only)
             # ----------------------------------------------------------
             if (do_all or flags.ssids) and "wireless" in product_types:
-                logger.debug("    Syncing SSIDs for network %s...", net_id)
+                logger.debug("    Syncing SSIDs for network %s (%s)...", net_id, net_name)
                 Ssid.sync(net_id)
 
     logger.info("Sync complete.")

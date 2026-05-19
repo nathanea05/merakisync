@@ -77,44 +77,53 @@ pip install -e .
 
 ## PostgreSQL Setup
 
-merakisync stores all data in a dedicated schema named `meraki`. The setup requires two separate database connections, so the steps below are split accordingly. Run all commands as a PostgreSQL superuser.
+merakisync stores all data in a dedicated schema named `meraki`. Run all commands as a PostgreSQL superuser.
 
-> **Homebrew on macOS:** A fresh Homebrew install does not create a database matching your system username. Always specify a database explicitly when connecting: `psql -d postgres`
+> **Database and user names:** The examples below use `merakisync` for both the database and the user. You can choose different names — just use them consistently in every command below and enter the same values when running `merakisync init`.
 
-### Part 1 — connect to `postgres` and run as superuser
+> **Remote databases:** If PostgreSQL is not on localhost, update `pg_hba.conf` to allow connections from the host running merakisync and reload the service (`pg_ctlcluster reload` or `systemctl reload postgresql`).
+
+### Step 1 — open a superuser session on the `postgres` database
+
+```bash
+psql -d postgres
+```
+
+> **Homebrew on macOS:** A fresh Homebrew install does not create a database matching your system username, so you must specify `-d postgres` explicitly.
+
+### Step 2 — create the database and user
 
 ```sql
--- 1. Create the database (skip if using an existing one)
 CREATE DATABASE merakisync;
-
--- 2. Create a dedicated user
 CREATE USER merakisync WITH PASSWORD 'your_password_here';
 ```
 
-### Part 2 — connect to `merakisync` and run as superuser
+### Step 3 — switch to the new database
 
-Disconnect from `postgres` and reconnect to the `merakisync` database before running these statements. In psql, type `\c merakisync`. In a GUI client such as VS Code SQLTools or DBeaver, close the current connection and open a new one targeting the `merakisync` database.
+The next commands must run inside the `merakisync` database, not `postgres`. Stay in the same psql session and run:
 
 ```sql
--- 3. Create the schema and grant ownership
+\c merakisync
+```
+
+If you are using a GUI client (VS Code SQLTools, DBeaver, etc.), close the current connection and open a new one targeting the `merakisync` database before continuing.
+
+### Step 4 — create the schema and grant privileges
+
+```sql
 CREATE SCHEMA IF NOT EXISTS meraki AUTHORIZATION merakisync;
 
--- 4. Grant privileges on the schema
 GRANT USAGE, CREATE ON SCHEMA meraki TO merakisync;
 
--- 5. Grant privileges on future tables and sequences created by migrations
 ALTER DEFAULT PRIVILEGES IN SCHEMA meraki
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO merakisync;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA meraki
     GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO merakisync;
 
--- 6. Set the default search path for this user
 ALTER ROLE merakisync IN DATABASE merakisync
     SET search_path = meraki, public;
 ```
-
-> **Remote databases:** If PostgreSQL is not on localhost, update `pg_hba.conf` to allow connections from the host running merakisync and reload the service (`pg_ctlcluster reload` or `systemctl reload postgresql`).
 
 ---
 

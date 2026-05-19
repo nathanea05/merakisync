@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest       # Apple Silicon
+            os: darwin
+            arch: arm64
+          - runner: macos-13           # Intel
+            os: darwin
+            arch: x86_64
+          - runner: ubuntu-latest      # x86_64
+            os: linux
+            arch: x86_64
+          - runner: ubuntu-24.04-arm   # ARM64
+            os: linux
+            arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build binary
+        run: pyinstaller merakisync.spec
+
+      - name: Rename binary
+        run: mv dist/merakisync dist/merakisync-${{ matrix.os }}-${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merakisync-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/merakisync-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum merakisync-* > checksums.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            dist/merakisync-darwin-arm64 \
+            dist/merakisync-darwin-x86_64 \
+            dist/merakisync-linux-x86_64 \
+            dist/merakisync-linux-arm64 \
+            dist/checksums.txt

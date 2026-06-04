@@ -103,11 +103,7 @@ CLAUDE.md's model template shows `@dataclass(frozen=True, slots=True)`. All mode
 
 ---
 
-### 10. `dashboard.py` violates the exception boundary rule
-
-**File:** `src/merakisync/dashboard.py:13`
-
-Covered by issue #1. Even after the bug fix, the fact that `dashboard.py` ever defined its own exception class is a spec violation: *"All custom exceptions. The only place they are defined" = `exceptions.py`.*
+### ~~10. `dashboard.py` violates the exception boundary rule~~
 
 Resolved as part of fixing issue #1.
 
@@ -183,3 +179,18 @@ Added a block comment in `base.py` explaining that `_changed_fields` is a stable
 
 ### 9. Models use `@dataclass()`, not `@dataclass(frozen=True, slots=True)` as specified
 Updated CLAUDE.md model template to `@dataclass()`. Explanation of why (change tracking requires mutability) is now in `base.py`.
+
+### 5. `Device.get()` silently drops `product_types_exclude`
+Applied in both paths: client-side model-prefix exclusion in the meraki path; `model NOT ILIKE` clauses in the database path.
+
+### 10. `dashboard.py` violates the exception boundary rule
+Resolved as part of issue #1.
+
+### 11. `__mapping_override__` bloat in multiple models
+Removed all unnecessary entries from Switchport (all 10), Alert (6 of 7), Uplink (1), and L3FirewallRule (all 7). Only `alert_type → "type"` remains (Python builtin conflict).
+
+### 12. `UplinkUsage.sync()` gap warning message is misleading
+Warning now fires only when gap > 30 days (truly unrecoverable). Message accurately names the lost date range. Updated CLAUDE.md, README, and `sync()` docstring to use the 30-day threshold throughout.
+
+### 14. Migration 0008 docstring has wrong `Revises` field
+Fixed: `Revises: 0008` → `Revises: 0007`.

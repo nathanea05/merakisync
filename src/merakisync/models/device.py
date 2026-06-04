@@ -123,6 +123,11 @@ class Device(MerakiObj):
             raw = dashboard.organizations.getOrganizationDevices(**api_kwargs)
             devices = [cls.from_dashboard(r) for r in raw]
 
+            _prefix_map = {"appliance": "MX", "switch": "MS", "wireless": "MR"}
+            excl_prefixes = [
+                _prefix_map[pt] for pt in product_types_exclude if pt in _prefix_map
+            ]
+
             filtered: list[I] = []
             for dev in devices:
                 if not filter_array(
@@ -132,6 +137,10 @@ class Device(MerakiObj):
                 ):
                     continue
                 if status and dev.status != status:
+                    continue
+                if excl_prefixes and any(
+                    (dev.model or "").upper().startswith(p) for p in excl_prefixes
+                ):
                     continue
                 filtered.append(dev)
             return filtered
@@ -170,18 +179,26 @@ class Device(MerakiObj):
                 where.append("NOT (tags ?| :tags_exclude)")
                 params["tags_exclude"] = tags_exclude
 
+            prefix_map = {"appliance": "MX", "switch": "MS", "wireless": "MR"}
+
             if product_types_include:
-                # Map product type names to Meraki model prefixes
-                prefix_map = {"appliance": "MX", "switch": "MS", "wireless": "MR"}
-                clauses = []
+                incl_clauses = []
                 for i, pt in enumerate(product_types_include):
                     prefix = prefix_map.get(pt)
                     if prefix:
-                        k = f"model_prefix_{i}"
-                        clauses.append(f"model ILIKE :{k}")
+                        k = f"incl_prefix_{i}"
+                        incl_clauses.append(f"model ILIKE :{k}")
                         params[k] = f"{prefix}%"
-                if clauses:
-                    where.append("(" + " OR ".join(clauses) + ")")
+                if incl_clauses:
+                    where.append("(" + " OR ".join(incl_clauses) + ")")
+
+            if product_types_exclude:
+                for i, pt in enumerate(product_types_exclude):
+                    prefix = prefix_map.get(pt)
+                    if prefix:
+                        k = f"excl_prefix_{i}"
+                        where.append(f"model NOT ILIKE :{k}")
+                        params[k] = f"{prefix}%"
 
             where_sql = " AND ".join(where) if where else "TRUE"
             sql = text(f"SELECT * FROM {cls._qualified()} WHERE {where_sql}")

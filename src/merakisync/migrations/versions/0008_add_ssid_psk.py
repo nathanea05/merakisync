@@ -1,7 +1,7 @@
 """Add psk column to meraki.ssid.
 
 Revision ID: 0008
-Revises: 0008
+Revises: 0007
 Create Date: 2026-06-04
 
 The psk field is returned by GET /networks/{networkId}/wireless/ssids for

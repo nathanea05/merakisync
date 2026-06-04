@@ -36,15 +36,7 @@ class L3FirewallRule(MerakiObj):
 
     __table_name__: ClassVar[str] = "l3_firewall_rule"
     __pk__: ClassVar[tuple[str, ...]] = ("network_id", "rule_order")
-    __mapping_override__: ClassVar[dict[str, str]] = {
-        "network_id": "networkId",
-        "rule_order": "ruleOrder",
-        "dest_port": "destPort",
-        "dest_cidr": "destCidr",
-        "src_port": "srcPort",
-        "src_cidr": "srcCidr",
-        "syslog_enabled": "syslogEnabled",
-    }
+    __mapping_override__: ClassVar[dict[str, str]] = {}
 
     # Business fields
     network_id: str        # injected

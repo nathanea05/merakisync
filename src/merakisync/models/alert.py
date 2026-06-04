@@ -36,12 +36,6 @@ class Alert(MerakiObj):
     # "type" is a Python builtin — map it to alert_type
     __mapping_override__: ClassVar[dict[str, str]] = {
         "alert_type": "type",
-        "started_at": "startedAt",
-        "resolved_at": "resolvedAt",
-        "dismissed_at": "dismissedAt",
-        "device_type": "deviceType",
-        "category_type": "categoryType",
-        "org_id": "orgId",
     }
 
     # Business fields

@@ -28,18 +28,7 @@ class Switchport(MerakiObj):
 
     __table_name__: ClassVar[str] = "switchport"
     __pk__: ClassVar[tuple[str, ...]] = ("serial", "port_id")
-    __mapping_override__: ClassVar[dict[str, str]] = {
-        "port_id": "portId",
-        "poe_enabled": "poeEnabled",
-        "rstp_enabled": "rstpEnabled",
-        "stp_guard": "stpGuard",
-        "link_negotiation": "linkNegotiation",
-        "access_policy_type": "accessPolicyType",
-        "sticky_mac_allow_list": "stickyMacAllowList",
-        "sticky_mac_allow_list_limit": "stickyMacAllowListLimit",
-        "voice_vlan": "voiceVlan",
-        "allowed_vlans": "allowedVlans",
-    }
+    __mapping_override__: ClassVar[dict[str, str]] = {}
 
     # Business fields — serial is injected; port_id comes from the API.
     # Fields are limited to those returned by getOrganizationSwitchPortsBySwitch.

@@ -254,7 +254,7 @@ Output is plain text with no colour codes, making it safe to redirect or capture
 
 **Run once daily at midnight UTC.** This keeps data fresh and ensures `UplinkUsage` monthly totals remain accurate.
 
-> **Important:** `UplinkUsage` uses an incremental sync strategy — each run queries only the delta since the last sync and accumulates the bytes onto the stored monthly total. The Meraki API enforces a 14-day maximum query window. If more than 14 days pass between syncs, the data for that gap is unrecoverable and a warning is logged. Run at least once every 14 days to guarantee accurate monthly usage totals.
+> **Important:** `UplinkUsage` uses an incremental sync strategy — each run queries only the delta since the last sync and accumulates the bytes onto the stored monthly total. Each query covers at most 14 days (the API's per-query maximum), but gaps up to 30 days are fully recoverable across multiple syncs. If more than 30 days pass between syncs, data beyond the 30-day lookback limit is unrecoverable and a warning is logged.
 
 ### Setting up a service account
 
@@ -469,7 +469,7 @@ Environment variables take precedence over values in the config file.
 | Device | `meraki.device` | Per-org | All product types |
 | Switchport | `meraki.switchport` | Per-org | MS switches only |
 | Uplink | `meraki.uplink` | Per-org | MX/Z devices |
-| UplinkUsage | `meraki.uplink_usage` | Per-org | Monthly bandwidth totals; sync at least every 14 days |
+| UplinkUsage | `meraki.uplink_usage` | Per-org | Monthly bandwidth totals; data unrecoverable after 30-day gap |
 | DhcpServerPolicy | `meraki.dhcp_server_policy` | Per-network | Switch networks only |
 | Alert | `meraki.alert` | Per-org | Assurance alerts |
 | L3FirewallRule | `meraki.l3_firewall_rule` | Per-network | MX appliance networks |

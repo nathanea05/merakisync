@@ -26,10 +26,7 @@ class Uplink(MerakiObj):
 
     __table_name__: ClassVar[str] = "uplink"
     __pk__: ClassVar[tuple[str, ...]] = ("serial", "interface")
-    __mapping_override__: ClassVar[dict[str, str]] = {
-        # Correct spelling — API returns "ipAssignedBy"
-        "ip_assigned_by": "ipAssignedBy",
-    }
+    __mapping_override__: ClassVar[dict[str, str]] = {}
 
     # Business fields
     serial: str

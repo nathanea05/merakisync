@@ -184,9 +184,10 @@ class UplinkUsage(MerakiObj):
         5. Upsert with last_seen=t1 so the next sync continues from where this
            one ended.
 
-        As long as syncs run at least every 14 days (the API's maximum window),
-        the full month is covered with no gaps. If a gap > 14 days is detected,
-        a warning is logged and the data for that gap is unrecoverable.
+        Each sync covers at most a 14-day window (the API's per-query maximum).
+        Gaps up to 30 days can be fully recovered across multiple syncs. If more
+        than 30 days pass between syncs, data older than the 30-day lookback limit
+        is unrecoverable and a warning is logged.
         """
         from datetime import timedelta
         from merakisync.dashboard import get_dashboard
@@ -207,16 +208,19 @@ class UplinkUsage(MerakiObj):
         if last_seen_values:
             t0 = max(last_seen_values)
             gap = now - t0
-            if gap > timedelta(days=14):
+            # Clamp to the API's 30-day absolute lookback limit.
+            t0_clamped = max(t0, now - timedelta(days=30))
+            if t0_clamped > t0:
+                # Gap exceeds the API's lookback window — data before t0_clamped
+                # cannot be recovered.
                 logger.warning(
-                    "Uplink usage gap of %d days for org %s — data between %s and %s "
-                    "is unrecoverable (API 14-day window limit).",
-                    gap.days, org_id,
-                    (now - timedelta(days=14)).strftime("%Y-%m-%d"),
+                    "Uplink usage gap for org %s: last sync was %d days ago. "
+                    "Data from %s to %s is unrecoverable (API 30-day lookback limit).",
+                    org_id, gap.days,
                     t0.strftime("%Y-%m-%d"),
+                    t0_clamped.strftime("%Y-%m-%d"),
                 )
-                # Clamp t0 so the API call doesn't fail
-                t0 = max(t0, now - timedelta(days=30))
+            t0 = t0_clamped
         else:
             t0 = month_start
 

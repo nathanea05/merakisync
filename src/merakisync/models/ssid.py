@@ -39,6 +39,7 @@ class Ssid(MerakiObj):
     ssid_admin_accessible: bool | None = None
     local_auth: bool | None = None
     auth_mode: str | None = None
+    psk: str | None = None
     encryption_mode: str | None = None
     wpa_encryption_mode: str | None = None
     radius_servers: list | None = None

@@ -2,16 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
 
 import meraki
 from meraki.exceptions import APIError
 
 from merakisync.config import get_config
-
-
-class MerakiConnectionError(RuntimeError):
-    """Raised when the Meraki Dashboard Connection fails, typically due to an invalid API key"""
+from merakisync.exceptions import MerakiConnectionError
 
 
 @dataclass(frozen=True)
@@ -60,7 +56,7 @@ def validate_api_key(api_key: str) -> None:
 def _get_cached_dashboard(api_key: str) -> meraki.DashboardAPI:
     return create_dashboard(api_key)
 
-def get_dashboard(api_key: Optional[str|None] = None) -> meraki.DashboardAPI:
+def get_dashboard(api_key: str | None = None) -> meraki.DashboardAPI:
     if api_key is None:
         conf = get_config()
         api_key = conf.meraki_api_key

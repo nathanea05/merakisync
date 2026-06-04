@@ -149,6 +149,14 @@ class Network(MerakiObj):
                 where.append("NOT (tags ?| :tags_exclude)")
                 params["tags_exclude"] = tags_exclude
 
+            if product_types_include:
+                where.append("product_types ?& :pt_include")
+                params["pt_include"] = product_types_include
+
+            if product_types_exclude:
+                where.append("NOT (product_types ?| :pt_exclude)")
+                params["pt_exclude"] = product_types_exclude
+
             where_sql = " AND ".join(where) if where else "TRUE"
             sql = text(f"SELECT * FROM {cls._qualified()} WHERE {where_sql} ORDER BY name")
 

@@ -60,7 +60,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # Exclude the migrations package from Python module collection entirely.
+    # These .py files must land on disk (via datas above) so Alembic can
+    # discover them with os.listdir.  PyInstaller 6 auto-collects namespace
+    # packages via pathex and compiles them into the PYZ archive, making them
+    # invisible to filesystem-based discovery.  excludes prevents that.
+    excludes=['merakisync.migrations'],
     noarchive=False,
     optimize=0,
 )

@@ -9,6 +9,8 @@ Sync Meraki Dashboard data into PostgreSQL and retrieve typed Python objects —
 - [Requirements](#requirements)
 - [Installation](#installation)
   - [Binary — scheduled sync on a server](#binary--scheduled-sync-on-a-server)
+    - [Updating the binary](#updating-the-binary)
+    - [Uninstalling the binary](#uninstalling-the-binary)
   - [Python library — scripting and automation](#python-library--scripting-and-automation)
 - [PostgreSQL Setup](#postgresql-setup)
 - [Configuration](#configuration)
@@ -58,6 +60,37 @@ curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.
 ```
 
 The binary provides the full CLI: `merakisync init`, `merakisync migrate`, and `merakisync sync`. It does **not** expose importable Python objects — use the library install below if you need those.
+
+**Updating the binary**
+
+Re-run the same install command. It overwrites the binary in place — no service restart required. After updating, run `merakisync migrate` to apply any new database migrations before the next sync runs.
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.sh | sh
+merakisync migrate
+```
+
+**Uninstalling the binary**
+
+Remove the binary and, optionally, the configuration file:
+
+```bash
+# Remove the binary (use the path reported during installation)
+rm /usr/local/bin/merakisync
+# or, if installed to ~/.local/bin:
+rm ~/.local/bin/merakisync
+
+# Optional: remove the configuration file
+rm -rf ~/.config/merakisync/       # regular user
+# or, if installed as root:
+rm -rf /etc/merakisync/
+```
+
+The PostgreSQL database and schema are not touched by uninstall. Drop them manually if you no longer need the data:
+
+```sql
+DROP SCHEMA meraki CASCADE;
+```
 
 ### Python library — scripting and automation
 

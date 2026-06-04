@@ -50,12 +50,12 @@ a = Analysis(
         'meraki',
         'meraki.api',
 
-        # merakisync migration modules: Alembic discovers them from disk (via
-        # datas above), but listing them here ensures they are also compiled
-        # into the bundle so imports work regardless of extraction state.
-        'merakisync.migrations',
-        'merakisync.migrations.env',
-        'merakisync.migrations.versions',
+        # NOTE: do NOT add merakisync.migrations.* here.  Alembic discovers
+        # migration files by walking the filesystem (os.listdir), not via
+        # Python imports.  Adding them as hiddenimports causes PyInstaller to
+        # compile them into the PYZ bytecode archive, which is invisible to
+        # os.listdir and breaks migration discovery entirely.  The datas entry
+        # above is the only thing needed.
     ],
     hookspath=[],
     hooksconfig={},

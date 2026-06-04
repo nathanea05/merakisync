@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -54,6 +55,7 @@ class Uplink(MerakiObj):
     mcc: str | None = None
     mnc: str | None = None
     roaming: dict | None = None
+    provider: str | None = None
 
     # SCD2 versioning
     active_from: datetime | None = None
@@ -186,11 +188,43 @@ class Uplink(MerakiObj):
     @classmethod
     def sync(cls: Type[I], org_id: str) -> list[I]:
         """Fetch uplink statuses for *org_id* from Meraki and upsert into the database."""
+        from identify_ip import get_ip_info
+
         uplinks = cls.get(org_id, source="meraki")
         if not uplinks:
             logger.warning("No uplinks returned for org %s.", org_id)
             return []
 
-        counts = cls.upsert_many(uplinks)
+        # Keyed by (serial, interface) so we can reuse provider when IP is unchanged
+        existing = {
+            (u.serial, u.interface): u
+            for u in cls.get(org_id, source="database")
+        }
+
+        enriched: list[I] = []
+        for uplink in uplinks:
+            db_uplink = existing.get((uplink.serial, uplink.interface))
+
+            if (
+                db_uplink is not None
+                and db_uplink.provider is not None
+                and db_uplink.public_ip == uplink.public_ip
+            ):
+                provider: str | None = db_uplink.provider
+            elif uplink.public_ip is not None:
+                try:
+                    provider = get_ip_info(uplink.public_ip, filt="registrant")
+                except Exception:
+                    logger.warning(
+                        "Provider lookup failed for uplink %s %s (public_ip=%s).",
+                        uplink.serial, uplink.interface, uplink.public_ip,
+                    )
+                    provider = None
+            else:
+                provider = None
+
+            enriched.append(dataclasses.replace(uplink, provider=provider))
+
+        counts = cls.upsert_many(enriched)
         logger.info("Uplinks synced for org %s: %s", org_id, counts)
-        return uplinks
+        return enriched

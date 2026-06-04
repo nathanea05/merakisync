@@ -70,25 +70,28 @@ def run() -> None:
             print("=== Re-enter Database Configuration ===")
     print("")
 
+    # --- Save ------------------------------------------------------------
+    conf = Configuration.from_parts(api_key=api_key, db=db_config)
+    print("Configuration complete.")
+    print(f"Settings will be saved to: {save_path}")
+    config_saved = False
+    if confirm("Save configuration?", default=True):
+        try:
+            write_config(path=save_path, conf=conf)
+            print(f"OK  Config saved to {save_path}")
+            config_saved = True
+        except ConfigWriteError as exc:
+            print(f"FAIL  {exc}")
+    print("")
+
     # --- Migrations ------------------------------------------------------
-    if database_validated:
+    if config_saved and database_validated:
         print("=== Database Migrations ===")
         if confirm("Apply database migrations now?", default=True):
             _run_migrations()
         else:
             print("WARN  Schema not applied. Run `merakisync migrate` before syncing.")
         print("")
-
-    # --- Save ------------------------------------------------------------
-    conf = Configuration.from_parts(api_key=api_key, db=db_config)
-    print("Configuration complete.")
-    print(f"Settings will be saved to: {save_path}")
-    if confirm("Save configuration?", default=True):
-        try:
-            write_config(path=save_path, conf=conf)
-            print(f"OK  Config saved to {save_path}")
-        except ConfigWriteError as exc:
-            print(f"FAIL  {exc}")
 
 
 def _run_migrations() -> None:

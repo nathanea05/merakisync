@@ -37,8 +37,12 @@ _COLUMNS = [
 
 
 def upgrade() -> None:
+    import sqlalchemy as sa
+    bind = op.get_bind()
+    existing = {c["name"] for c in sa.inspect(bind).get_columns("switchport", schema="meraki")}
     for col in _COLUMNS:
-        op.drop_column("switchport", col, schema="meraki")
+        if col in existing:
+            op.drop_column("switchport", col, schema="meraki")
 
 
 def downgrade() -> None:

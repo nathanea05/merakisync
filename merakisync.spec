@@ -43,6 +43,9 @@ a = Analysis(
         'mako.codegen',
         'mako.compat',
 
+        # identify-ip: RDAP-based IP registrant lookup used during uplink sync.
+        'identify_ip',
+
         # Meraki SDK — list top-level package so all submodules are traced.
         'meraki',
         'meraki.api',

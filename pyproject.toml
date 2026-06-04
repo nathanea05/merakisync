@@ -25,6 +25,7 @@ dependencies = [
   "psycopg2-binary>=2.9",
   "SQLAlchemy>=2.0",
   "alembic>=1.13",
+  "identify-ip @ git+https://github.com/nathanea05/identify-ip",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,9 @@ Issues = "https://github.com/nathanea05/merakisync/issues"
 
 [project.scripts]
 merakisync = "merakisync.cli.cli:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.version]
 path = "src/merakisync/__about__.py"

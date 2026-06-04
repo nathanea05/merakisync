@@ -197,7 +197,7 @@ def prompt_api_key() -> str:
 def prompt_database() -> DbConfig:
     host = prompt("Postgres host/IP [localhost]: ") or "localhost"
     port = prompt("Postgres port [5432]: ", expect="int") or 5432
-    name = prompt("Database name [meraki]: ") or "meraki"
+    name = prompt("Database name [merakisync]: ") or "merakisync"
     user = prompt("Database username [merakisync]: ") or "merakisync"
     password = prompt("Database password (input hidden) [required]: ", hidden=True, required=True)
     return DbConfig(host=host, port=int(port), name=name, user=user, password=password)

@@ -26,7 +26,7 @@ Issues found during a full codebase audit. Ordered by priority within each tier.
 
 ---
 
-### 3. `DhcpServerPolicy.sync()` calls `upsert()` instead of `upsert_many()`
+### ~~3. `DhcpServerPolicy.sync()` calls `upsert()` instead of `upsert_many()`~~
 
 **File:** `src/merakisync/models/dhcp_server_policy.py:114`
 
@@ -36,7 +36,7 @@ Issues found during a full codebase audit. Ordered by priority within each tier.
 
 ---
 
-### 4. `DhcpServerPolicy.get()` and `sync()` return `I | None`, not `list[I]`
+### ~~4. `DhcpServerPolicy.get()` and `sync()` return `I | None`, not `list[I]`~~
 
 **File:** `src/merakisync/models/dhcp_server_policy.py:63, 107`
 
@@ -68,7 +68,7 @@ These two parameters are applied client-side for `source="meraki"` but there is 
 
 ---
 
-### 7. `name` filter semantics differ between sources, and this is undocumented
+### ~~7. `name` filter semantics differ between sources, and this is undocumented~~
 
 **Files:** `organization.py`, `network.py`, `device.py`, `vlan.py`
 
@@ -83,7 +83,7 @@ This inconsistency is not documented in any `get()` docstring. A caller filterin
 
 ## Tier 3 — Clean up (technical debt / spec alignment)
 
-### 8. `_changed_fields` is undocumented public infrastructure
+### ~~8. `_changed_fields` is undocumented public infrastructure~~
 
 **File:** `src/merakisync/models/base.py`
 
@@ -93,7 +93,7 @@ This inconsistency is not documented in any `get()` docstring. A caller filterin
 
 ---
 
-### 9. Models use `@dataclass()`, not `@dataclass(frozen=True, slots=True)` as specified
+### ~~9. Models use `@dataclass()`, not `@dataclass(frozen=True, slots=True)` as specified~~
 
 **Files:** All model files
 
@@ -170,3 +170,16 @@ Removed the local `class MerakiConnectionError` from `dashboard.py`. Now imports
 ### 2. JSONB operators used on TEXT columns — tag filters fail at runtime
 ### 6. `Network.get()` silently drops `product_types_include/exclude` in the database path
 Migration `0009_jsonb_tags_product_types.py` converts `network.tags`, `network.product_types`, and `device.tags` from TEXT to JSONB. Added `product_types ?& / ?|` filtering to `Network.get()` DB path.
+
+### 3. `DhcpServerPolicy.sync()` calls `upsert()` instead of `upsert_many()`
+### 4. `DhcpServerPolicy.get()` and `sync()` return `I | None`, not `list[I]`
+`get()` now returns `list[I]` (single-element list or empty list). `sync()` now calls `upsert_many([policy])` and returns `list[I]`.
+
+### 7. `name` filter semantics differ between sources, and this is undocumented
+Documented the Meraki-vs-database difference in `get()` docstrings for `Organization`, `Network`, `Device`, and `Vlan`.
+
+### 8. `_changed_fields` is undocumented public infrastructure
+Added a block comment in `base.py` explaining that `_changed_fields` is a stable public interface consumed by merakiops for action-batch construction, and explaining why models use `@dataclass()` (mutable) rather than `frozen=True`.
+
+### 9. Models use `@dataclass()`, not `@dataclass(frozen=True, slots=True)` as specified
+Updated CLAUDE.md model template to `@dataclass()`. Explanation of why (change tracking requires mutability) is now in `base.py`.

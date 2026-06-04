@@ -58,11 +58,25 @@ class MerakiObj:
     __versioned__: ClassVar[bool] = True  # SCD2 by default
 
     # ------------------------------------------------------------------
-    # Change tracking
+    # Change tracking  (public API — consumed by merakiops)
     # ------------------------------------------------------------------
+    #
+    # _changed_fields is intentionally part of the public interface.
+    # External callers (e.g. merakiops) assign new values to model fields
+    # after construction to represent a desired configuration state, then
+    # read _changed_fields to determine which fields changed and build
+    # Meraki action-batch payloads from them.
+    #
+    # merakisync itself does not read _changed_fields; it exists solely
+    # for the benefit of callers that perform partial API writes.  Do not
+    # remove or rename it without a coordinated change in merakiops.
+    #
+    # This also explains why models use plain @dataclass() (mutable) rather
+    # than @dataclass(frozen=True): frozen instances cannot be mutated after
+    # construction, which would break the change-tracking use case.
 
     def __post_init__(self) -> None:
-        """Called by the dataclass-generated __init__ after all fields are set."""
+        """Initialise _changed_fields after the dataclass __init__ runs."""
         self._changed_fields: set[str] = set()
 
     def __setattr__(self, name: str, value: Any) -> None:

@@ -61,7 +61,9 @@ class Organization(MerakiObj):
 
         Args:
             source:  "meraki" or "database".
-            name:    Optional name filter (case-insensitive).
+            name:    Name filter. Behaviour differs by source:
+                     - "meraki": exact case-insensitive match.
+                     - "database": case-insensitive substring match (ILIKE %name%).
             ts:      Timestamp filter for DB queries.
                      None  → current rows only (active_to IS NULL).
                      "all" → all versions.

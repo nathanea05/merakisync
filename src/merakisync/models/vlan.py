@@ -114,7 +114,9 @@ class Vlan(MerakiObj):
             source:     "meraki" or "database".
             ts:         Timestamp filter (DB only).
             vlan_id:    Filter by VLAN ID.
-            name:       ILIKE name filter (DB only) or exact match (Meraki).
+            name:       Name filter. Behaviour differs by source:
+                        - "meraki": exact case-sensitive match.
+                        - "database": case-insensitive substring match (ILIKE %name%).
         """
         if ts and source == "meraki":
             raise ValueError("Timestamp lookups require source='database'.")

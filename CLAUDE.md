@@ -236,7 +236,7 @@ Every SCD2 model table has three timestamp columns:
 Each model file follows this pattern:
 
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass()
 class Vlan(MerakiObj):
     __table_name__: ClassVar[str] = "vlan"
     __pk__: ClassVar[tuple[str, ...]] = ("network_id", "vlan_id")

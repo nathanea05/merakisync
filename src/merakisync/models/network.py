@@ -73,7 +73,9 @@ class Network(MerakiObj):
             org_id:   Meraki organization ID (required for source='meraki').
             source:   "meraki" or "database".
             ts:       Timestamp filter (DB only).
-            name:     Exact-name filter for Meraki; ILIKE filter for DB.
+            name:     Name filter. Behaviour differs by source:
+                      - "meraki": exact case-sensitive match.
+                      - "database": case-insensitive substring match (ILIKE %name%).
             network_id: Filter by network ID.
             tags_include:          All of these tags must be present.
             tags_exclude:          None of these tags may be present.

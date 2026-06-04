@@ -60,8 +60,12 @@ class DhcpServerPolicy(MerakiObj):
         source: Literal["database", "meraki"] = "database",
         *,
         ts: datetime | Literal["all"] | None = None,
-    ) -> I | None:
+    ) -> list[I]:
         """Retrieve the DHCP server policy for a single network.
+
+        Returns a list with one element (the policy) or an empty list when no
+        record exists. The list form keeps the interface consistent with all
+        other models.
 
         Args:
             network_id: Meraki network ID.
@@ -76,7 +80,7 @@ class DhcpServerPolicy(MerakiObj):
             dashboard = get_dashboard()
             raw = dashboard.switch.getNetworkSwitchDhcpServerPolicy(network_id)
             raw["networkId"] = network_id
-            return cls.from_dashboard(raw)
+            return [cls.from_dashboard(raw)]
 
         if source == "database":
             from merakisync.database import get_engine
@@ -95,7 +99,7 @@ class DhcpServerPolicy(MerakiObj):
             )
             with engine.connect() as conn:
                 row = conn.execute(sql, params).mappings().fetchone()
-            return cls.from_row(row) if row else None
+            return [cls.from_row(row)] if row else []
 
         raise ValueError(f"Invalid source '{source}'. Must be 'database' or 'meraki'.")
 
@@ -104,13 +108,13 @@ class DhcpServerPolicy(MerakiObj):
     # ------------------------------------------------------------------
 
     @classmethod
-    def sync(cls: Type[I], network_id: str) -> I | None:
+    def sync(cls: Type[I], network_id: str) -> list[I]:
         """Fetch the DHCP server policy for *network_id* and upsert into the database."""
-        policy = cls.get(network_id, source="meraki")
-        if not policy:
+        policies = cls.get(network_id, source="meraki")
+        if not policies:
             logger.warning("No DHCP server policy returned for network %s.", network_id)
-            return None
+            return []
 
-        policy.upsert()
-        logger.debug("DhcpServerPolicy synced for network %s.", network_id)
-        return policy
+        counts = cls.upsert_many(policies)
+        logger.debug("DhcpServerPolicy synced for network %s: %s", network_id, counts)
+        return policies

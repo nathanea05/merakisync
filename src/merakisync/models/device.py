@@ -83,7 +83,9 @@ class Device(MerakiObj):
             source:  "meraki" or "database".
             ts:      Timestamp filter (DB only).
             serial:  Filter by device serial.
-            name:    Filter by device name.
+            name:    Name filter. Behaviour differs by source:
+                     - "meraki": passed to the API (exact match, server-side).
+                     - "database": case-insensitive substring match (ILIKE %name%).
             network_id: Filter by network ID.
             tags_include:          All tags must be present (applied client-side for Meraki).
             tags_exclude:          None of these tags may be present.

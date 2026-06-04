@@ -24,6 +24,11 @@ a = Analysis(
         'psycopg2.extensions',
         'psycopg2.extras',
 
+        # env.py imports logging.config directly.  PyInstaller no longer scans
+        # env.py for imports (because merakisync.migrations is in excludes), so
+        # this dependency must be declared explicitly.
+        'logging.config',
+
         # Alembic internals loaded dynamically during migrate.
         'alembic.runtime.migration',
         'alembic.operations',

@@ -73,9 +73,7 @@ class Network(MerakiObj):
             org_id:   Meraki organization ID (required for source='meraki').
             source:   "meraki" or "database".
             ts:       Timestamp filter (DB only).
-            name:     Name filter. Behaviour differs by source:
-                      - "meraki": exact case-sensitive match.
-                      - "database": case-insensitive substring match (ILIKE %name%).
+            name:     Case-insensitive substring filter applied in both sources.
             network_id: Filter by network ID.
             tags_include:          All of these tags must be present.
             tags_exclude:          None of these tags may be present.
@@ -98,7 +96,7 @@ class Network(MerakiObj):
 
             filtered: list[I] = []
             for net in networks:
-                if name and net.name != name:
+                if name and name.lower() not in (net.name or "").lower():
                     continue
                 if network_id and net.id != network_id:
                     continue

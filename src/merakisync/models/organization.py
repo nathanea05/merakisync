@@ -61,9 +61,7 @@ class Organization(MerakiObj):
 
         Args:
             source:  "meraki" or "database".
-            name:    Name filter. Behaviour differs by source:
-                     - "meraki": exact case-insensitive match.
-                     - "database": case-insensitive substring match (ILIKE %name%).
+            name:    Case-insensitive substring filter applied in both sources.
             ts:      Timestamp filter for DB queries.
                      None  → current rows only (active_to IS NULL).
                      "all" → all versions.
@@ -79,7 +77,7 @@ class Organization(MerakiObj):
             orgs = [cls.from_dashboard(r) for r in results]
             if name:
                 needle = name.strip().lower()
-                orgs = [o for o in orgs if o.name.strip().lower() == needle]
+                orgs = [o for o in orgs if needle in o.name.strip().lower()]
             return orgs
 
         if source == "database":

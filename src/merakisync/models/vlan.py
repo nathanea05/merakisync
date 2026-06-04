@@ -114,9 +114,7 @@ class Vlan(MerakiObj):
             source:     "meraki" or "database".
             ts:         Timestamp filter (DB only).
             vlan_id:    Filter by VLAN ID.
-            name:       Name filter. Behaviour differs by source:
-                        - "meraki": exact case-sensitive match.
-                        - "database": case-insensitive substring match (ILIKE %name%).
+            name:       Case-insensitive substring filter applied in both sources.
         """
         if ts and source == "meraki":
             raise ValueError("Timestamp lookups require source='database'.")
@@ -132,7 +130,7 @@ class Vlan(MerakiObj):
                 vlan = cls.from_dashboard(flat)
                 if vlan_id is not None and vlan.vlan_id != vlan_id:
                     continue
-                if name and vlan.name != name:
+                if name and name.lower() not in (vlan.name or "").lower():
                     continue
                 vlans.append(vlan)
             return vlans

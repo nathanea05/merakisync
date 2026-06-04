@@ -83,9 +83,9 @@ class Device(MerakiObj):
             source:  "meraki" or "database".
             ts:      Timestamp filter (DB only).
             serial:  Filter by device serial.
-            name:    Name filter. Behaviour differs by source:
-                     - "meraki": passed to the API (exact match, server-side).
-                     - "database": case-insensitive substring match (ILIKE %name%).
+            name:    Case-insensitive substring filter applied in both sources.
+                     For source="meraki" this is applied client-side after the
+                     API response (not passed to the API).
             network_id: Filter by network ID.
             tags_include:          All tags must be present (applied client-side for Meraki).
             tags_exclude:          None of these tags may be present.
@@ -115,8 +115,6 @@ class Device(MerakiObj):
                 api_kwargs["productTypes"] = product_types_include
             if tags_include:
                 api_kwargs["tags"] = tags_include
-            if name:
-                api_kwargs["name"] = name
             if model:
                 api_kwargs["model"] = model
 
@@ -135,6 +133,8 @@ class Device(MerakiObj):
                     include=tags_include,
                     exclude=tags_exclude,
                 ):
+                    continue
+                if name and name.lower() not in (dev.name or "").lower():
                     continue
                 if status and dev.status != status:
                     continue

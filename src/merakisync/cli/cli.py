@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from merakisync.__about__ import __version__
 from merakisync.cli.cmd_sync import SyncFlags
 
 
@@ -23,6 +24,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="merakisync",
         description="Sync Meraki Dashboard data into PostgreSQL.",
+    )
+
+    parser.add_argument(
+        "--version", action="version", version=f"merakisync {__version__}",
     )
 
     # Global log-level flags — also added to each subcommand below so they

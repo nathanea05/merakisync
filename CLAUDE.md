@@ -409,7 +409,7 @@ A feature or change is complete when:
 - It does not break any existing model, sync, or retrieval behaviour.
 - It follows the structure and patterns in this file.
 - Edge cases are handled (empty API responses, missing fields, null values).
-- Tests are written for any new `from_dashboard`, `from_row`, or field-mapping logic.
+- Unit tests are written for every new feature, covering the happy path, edge cases (empty API responses, missing fields, null values), and any field-mapping logic (`from_dashboard`, `from_row`). Tests live in `tests/test_<model>.py` and follow the patterns in existing test files. A feature is not done if it has no tests.
 
 ---
 

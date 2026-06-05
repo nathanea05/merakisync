@@ -38,6 +38,26 @@ class TestParser:
         args = self.parser.parse_args(["init"])
         assert args.command == "init"
 
+    def test_init_meraki_flag(self):
+        args = self.parser.parse_args(["init", "--meraki"])
+        assert args.meraki is True
+        assert args.database is False
+
+    def test_init_database_flag(self):
+        args = self.parser.parse_args(["init", "--database"])
+        assert args.database is True
+        assert args.meraki is False
+
+    def test_init_both_flags(self):
+        args = self.parser.parse_args(["init", "--meraki", "--database"])
+        assert args.meraki is True
+        assert args.database is True
+
+    def test_init_no_flags_defaults_false(self):
+        args = self.parser.parse_args(["init"])
+        assert args.meraki is False
+        assert args.database is False
+
     def test_migrate_default_revision(self):
         args = self.parser.parse_args(["migrate"])
         assert args.command == "migrate"
@@ -155,7 +175,21 @@ class TestMainDispatch:
             with patch("merakisync.logging.configure_logging"):
                 with patch("merakisync.cli.cmd_init.run") as mock_run:
                     main()
-        mock_run.assert_called_once()
+        mock_run.assert_called_once_with(configure_meraki=True, configure_database=True)
+
+    def test_init_meraki_only_dispatch(self):
+        with patch("sys.argv", ["merakisync", "init", "--meraki"]):
+            with patch("merakisync.logging.configure_logging"):
+                with patch("merakisync.cli.cmd_init.run") as mock_run:
+                    main()
+        mock_run.assert_called_once_with(configure_meraki=True, configure_database=False)
+
+    def test_init_database_only_dispatch(self):
+        with patch("sys.argv", ["merakisync", "init", "--database"]):
+            with patch("merakisync.logging.configure_logging"):
+                with patch("merakisync.cli.cmd_init.run") as mock_run:
+                    main()
+        mock_run.assert_called_once_with(configure_meraki=False, configure_database=True)
 
     def test_migrate_dispatch(self):
         with patch("sys.argv", ["merakisync", "migrate"]):
@@ -185,6 +219,27 @@ class TestMainDispatch:
         with patch("sys.argv", ["merakisync", "sync"]):
             with patch("merakisync.logging.configure_logging"):
                 with patch("merakisync.config.get_config", side_effect=MissingConfigError("no config")):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+        assert exc_info.value.code == 1
+
+    def test_sync_no_api_key_exits_nonzero(self):
+        from merakisync.config import Configuration, DbConfig
+        db = DbConfig(host="localhost", port=5432, name="db", user="u", password="p")
+        partial = Configuration(meraki_api_key=None, db=db)
+        with patch("sys.argv", ["merakisync", "sync"]):
+            with patch("merakisync.logging.configure_logging"):
+                with patch("merakisync.config.get_config", return_value=partial):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+        assert exc_info.value.code == 1
+
+    def test_sync_no_db_exits_nonzero(self):
+        from merakisync.config import Configuration
+        partial = Configuration(meraki_api_key="some-key", db=None)
+        with patch("sys.argv", ["merakisync", "sync"]):
+            with patch("merakisync.logging.configure_logging"):
+                with patch("merakisync.config.get_config", return_value=partial):
                     with pytest.raises(SystemExit) as exc_info:
                         main()
         assert exc_info.value.code == 1

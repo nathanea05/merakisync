@@ -32,6 +32,14 @@ class TestGetEngine:
                 get_engine()
         mock_create.assert_called_once()
 
+    def test_none_db_in_config_raises_missing_config_error(self):
+        from merakisync.config import Configuration
+        from merakisync.exceptions import MissingConfigError
+        partial = Configuration(meraki_api_key="some-key", db=None)
+        with patch("merakisync.config.get_config", return_value=partial):
+            with pytest.raises(MissingConfigError, match="Database"):
+                get_engine()
+
     def test_same_dsn_returns_cached_engine(self):
         dsn = "postgresql+psycopg2://user:pass@localhost/db"
         with patch("merakisync.database.create_engine") as mock_create:

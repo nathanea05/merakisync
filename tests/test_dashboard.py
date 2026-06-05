@@ -98,6 +98,15 @@ class TestGetDashboard:
             result = get_dashboard(api_key="direct_key")
         assert result is mock_dash
 
+    def test_none_api_key_in_config_raises_missing_config_error(self):
+        from merakisync.config import Configuration
+        from merakisync.exceptions import MissingConfigError
+        partial = Configuration(meraki_api_key=None, db=None)
+        with patch("merakisync.dashboard.get_config", return_value=partial):
+            from merakisync.dashboard import get_dashboard
+            with pytest.raises(MissingConfigError, match="Meraki API key"):
+                get_dashboard()
+
 
 class TestResetDashboardCache:
     def test_reset_clears_cache(self):

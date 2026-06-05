@@ -68,17 +68,55 @@ class TestConfigurationFromToml:
         assert conf.db.port == 5432
         assert conf.db.name == "meraki"
 
-    def test_empty_api_key_raises(self):
+    def test_empty_api_key_becomes_none(self):
         import tomllib
         bad = MINIMAL_TOML.replace('api_key = "test-api-key"', 'api_key = ""')
         data = tomllib.loads(bad)
-        with pytest.raises(ValueError, match="API key"):
-            Configuration.from_toml(data)
+        conf = Configuration.from_toml(data)
+        assert conf.meraki_api_key is None
+
+    def test_missing_meraki_section_gives_none_key(self):
+        import tomllib
+        db_only = "\n".join(
+            line for line in MINIMAL_TOML.splitlines()
+            if not line.startswith("[meraki]") and not line.startswith("api_key")
+        )
+        data = tomllib.loads(db_only)
+        conf = Configuration.from_toml(data)
+        assert conf.meraki_api_key is None
+        assert conf.db is not None
+
+    def test_missing_database_section_gives_none_db(self):
+        import tomllib
+        meraki_only = "[meraki]\napi_key = \"test-api-key\"\n"
+        data = tomllib.loads(meraki_only)
+        conf = Configuration.from_toml(data)
+        assert conf.meraki_api_key == "test-api-key"
+        assert conf.db is None
 
 
 # ---------------------------------------------------------------------------
 # get_save_path
 # ---------------------------------------------------------------------------
+
+class TestConfigurationFromParts:
+    def test_strips_api_key_whitespace(self):
+        db = DbConfig(host="localhost", port=5432, name="db", user="u", password="p")
+        conf = Configuration.from_parts(api_key="  key  ", db=db)
+        assert conf.meraki_api_key == "key"
+
+    def test_whitespace_only_api_key_becomes_none(self):
+        conf = Configuration.from_parts(api_key="   ")
+        assert conf.meraki_api_key is None
+
+    def test_none_api_key_stays_none(self):
+        conf = Configuration.from_parts(api_key=None)
+        assert conf.meraki_api_key is None
+
+    def test_none_db_stays_none(self):
+        conf = Configuration.from_parts(api_key="key", db=None)
+        assert conf.db is None
+
 
 class TestGetSavePath:
     def test_non_root_uses_home(self):
@@ -135,6 +173,18 @@ class TestGetConfigEnvOverlay:
             with pytest.raises(MissingConfigError):
                 get_config()
 
+    def test_only_api_key_env_no_file_returns_partial(self, tmp_path: Path):
+        missing = tmp_path / "nonexistent.toml"
+        env = {"MERAKI_API_KEY": "env-only-key"}
+        clean_env = {k: v for k, v in os.environ.items()
+                     if not k.startswith("MERAKISYNC") and k != "MERAKI_API_KEY"}
+        clean_env.update(env)
+        with patch("merakisync.config.get_save_path", return_value=missing), \
+             patch.dict(os.environ, clean_env, clear=True):
+            conf = get_config()
+        assert conf.meraki_api_key == "env-only-key"
+        assert conf.db is None
+
     def test_all_env_no_file(self, tmp_path: Path):
         missing = tmp_path / "nonexistent.toml"
         env = {
@@ -172,3 +222,33 @@ class TestWriteConfig:
         assert "localhost" in content
         # port should be an integer in TOML, not quoted
         assert "port = 5432" in content
+
+    def test_meraki_only_omits_database_section(self, tmp_path: Path):
+        cfg_file = tmp_path / "config.toml"
+        conf = Configuration(meraki_api_key="mykey", db=None)
+        write_config(cfg_file, conf=conf)
+        content = cfg_file.read_text()
+        assert "[meraki]" in content
+        assert "mykey" in content
+        assert "[database]" not in content
+
+    def test_database_only_omits_meraki_section(self, tmp_path: Path):
+        cfg_file = tmp_path / "config.toml"
+        db = DbConfig(host="dbhost", port=5432, name="db", user="u", password="p")
+        conf = Configuration(meraki_api_key=None, db=db)
+        write_config(cfg_file, conf=conf)
+        content = cfg_file.read_text()
+        assert "[database]" in content
+        assert "dbhost" in content
+        assert "[meraki]" not in content
+
+    def test_partial_write_roundtrips_via_from_toml(self, tmp_path: Path):
+        import tomllib
+        cfg_file = tmp_path / "config.toml"
+        conf = Configuration(meraki_api_key="roundtrip-key", db=None)
+        write_config(cfg_file, conf=conf)
+        with open(cfg_file, "rb") as f:
+            data = tomllib.load(f)
+        reloaded = Configuration.from_toml(data)
+        assert reloaded.meraki_api_key == "roundtrip-key"
+        assert reloaded.db is None

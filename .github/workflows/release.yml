@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -77,3 +78,25 @@ jobs:
             dist/merakisync-linux-x86_64 \
             dist/merakisync-linux-arm64 \
             dist/checksums.txt
+
+  publish:
+    name: Publish to PyPI
+    needs: release
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build distribution
+        run: |
+          pip install build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

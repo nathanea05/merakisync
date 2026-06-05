@@ -1,7 +1,9 @@
-"""Tests for the Ssid model: from_dashboard, from_row, field mapping, data fields."""
+"""Tests for the Ssid model: from_dashboard, from_row, field mapping, data fields,
+resource_path, and get() for both sources."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -216,3 +218,140 @@ class TestDataFields:
         assert data["name"] == "Test"
         assert data["auth_mode"] == "psk"
         assert data["enabled"] is True
+
+
+# ---------------------------------------------------------------------------
+# resource_path
+# ---------------------------------------------------------------------------
+
+class TestResourcePath:
+    def test_resource_path(self):
+        s = Ssid(network_id="N_abc", number=5)
+        assert s.resource_path == "/networks/N_abc/wireless/ssids/5"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for get() tests
+# ---------------------------------------------------------------------------
+
+def _mock_engine(rows=None):
+    conn = MagicMock()
+    result = MagicMock()
+    result.mappings.return_value.all.return_value = rows or []
+    conn.execute.return_value = result
+    conn.__enter__ = MagicMock(return_value=conn)
+    conn.__exit__ = MagicMock(return_value=False)
+    engine = MagicMock()
+    engine.connect.return_value = conn
+    return engine, conn
+
+
+# ---------------------------------------------------------------------------
+# get() — validation
+# ---------------------------------------------------------------------------
+
+class TestGetValidation:
+    def test_ts_with_meraki_raises(self):
+        with pytest.raises(ValueError, match="Timestamp"):
+            Ssid.get("N_abc", source="meraki", ts=datetime.now(tz=timezone.utc))
+
+    def test_invalid_source_raises(self):
+        with pytest.raises(ValueError, match="Invalid source"):
+            Ssid.get("N_abc", source="invalid")  # type: ignore
+
+
+# ---------------------------------------------------------------------------
+# get() — source="meraki"
+# ---------------------------------------------------------------------------
+
+class TestGetMeraki:
+    def _make_dash(self, ssids):
+        mock_dash = MagicMock()
+        mock_dash.wireless.getNetworkWirelessSsids.return_value = ssids
+        return mock_dash
+
+    def test_returns_ssid_instances(self):
+        dash = self._make_dash([_raw()])
+        with patch("merakisync.dashboard.get_dashboard", return_value=dash):
+            ssids = Ssid.get("N_abc", source="meraki")
+        assert len(ssids) == 1
+        assert isinstance(ssids[0], Ssid)
+
+    def test_network_id_injected(self):
+        dash = self._make_dash([_raw()])
+        with patch("merakisync.dashboard.get_dashboard", return_value=dash):
+            ssids = Ssid.get("N_abc123", source="meraki")
+        assert ssids[0].network_id == "N_abc123"
+
+    def test_number_filter(self):
+        dash = self._make_dash([_raw(number=0), _raw(number=1)])
+        with patch("merakisync.dashboard.get_dashboard", return_value=dash):
+            ssids = Ssid.get("N_abc", source="meraki", number=0)
+        assert len(ssids) == 1
+        assert ssids[0].number == 0
+
+    def test_empty_response_returns_empty_list(self):
+        dash = self._make_dash([])
+        with patch("merakisync.dashboard.get_dashboard", return_value=dash):
+            assert Ssid.get("N_abc", source="meraki") == []
+
+
+# ---------------------------------------------------------------------------
+# get() — source="database"
+# ---------------------------------------------------------------------------
+
+class TestGetDatabase:
+    def test_active_to_null_default(self):
+        engine, conn = _mock_engine([_row()])
+        with patch("merakisync.database.get_engine", return_value=engine):
+            Ssid.get("N_abc", source="database")
+        sql = str(conn.execute.call_args.args[0])
+        assert "active_to IS NULL" in sql
+
+    def test_network_id_in_params(self):
+        engine, conn = _mock_engine([])
+        with patch("merakisync.database.get_engine", return_value=engine):
+            Ssid.get("N_abc", source="database")
+        params = conn.execute.call_args.args[1]
+        assert params["network_id"] == "N_abc"
+
+    def test_number_filter(self):
+        engine, conn = _mock_engine([])
+        with patch("merakisync.database.get_engine", return_value=engine):
+            Ssid.get("N_abc", source="database", number=5)
+        params = conn.execute.call_args.args[1]
+        assert params["number"] == 5
+
+    def test_enabled_filter(self):
+        engine, conn = _mock_engine([])
+        with patch("merakisync.database.get_engine", return_value=engine):
+            Ssid.get("N_abc", source="database", enabled=True)
+        params = conn.execute.call_args.args[1]
+        assert params["enabled"] is True
+
+    def test_ts_filter(self):
+        engine, conn = _mock_engine([])
+        ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        with patch("merakisync.database.get_engine", return_value=engine):
+            Ssid.get("N_abc", source="database", ts=ts)
+        params = conn.execute.call_args.args[1]
+        assert params["ts"] == ts
+
+    def test_ts_all(self):
+        engine, conn = _mock_engine([])
+        with patch("merakisync.database.get_engine", return_value=engine):
+            Ssid.get("N_abc", source="database", ts="all")
+        sql = str(conn.execute.call_args.args[0])
+        assert "active_to IS NULL" not in sql
+
+    def test_results_mapped_to_instances(self):
+        engine, conn = _mock_engine([_row()])
+        with patch("merakisync.database.get_engine", return_value=engine):
+            ssids = Ssid.get("N_abc123", source="database")
+        assert len(ssids) == 1
+        assert isinstance(ssids[0], Ssid)
+
+    def test_empty_result_returns_empty_list(self):
+        engine, conn = _mock_engine([])
+        with patch("merakisync.database.get_engine", return_value=engine):
+            assert Ssid.get("N_abc", source="database") == []

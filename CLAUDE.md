@@ -386,11 +386,14 @@ Checklist:
 
 ## Before writing code
 
-Always:
-1. Explain what you plan to change and why.
-2. Identify any risks or places where existing behaviour could break.
-3. Call out anything that is unclear before starting.
-4. Check the existing models for patterns before inventing new ones.
+**Every time a codebase change is requested**, before touching any file, you must respond with all of the following:
+
+1. **Reasoning** — why this change is needed and what problem it solves.
+2. **Assumptions** — any assumptions being made about intent, scope, or existing behaviour. Call out anything ambiguous and state how you are resolving it.
+3. **Risks** — places where existing behaviour could break, subtle side effects, or anything that warrants extra care.
+4. **Implementation plan** — a concrete, step-by-step list of every file that will change and what will be done to each one. Reference existing patterns from other models where applicable.
+
+Do not write a single line of code until this pre-flight explanation is complete. If anything is unclear, ask before proceeding.
 
 When writing code:
 - Make incremental changes — one concern at a time.

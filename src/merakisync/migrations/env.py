@@ -16,7 +16,13 @@ if config.config_file_name is not None:
 # in alembic.ini or pass it on the command line.
 def _get_dsn() -> str:
     from merakisync.config import get_config
-    return get_config().db.get_dsn()
+    from merakisync.exceptions import MissingConfigError
+    conf = get_config()
+    if conf.db is None:
+        raise MissingConfigError(
+            "Database is not configured. Run `merakisync init --database`."
+        )
+    return conf.db.get_dsn()
 
 
 def run_migrations_offline() -> None:

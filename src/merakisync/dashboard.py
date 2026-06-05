@@ -58,7 +58,12 @@ def _get_cached_dashboard(api_key: str) -> meraki.DashboardAPI:
 
 def get_dashboard(api_key: str | None = None) -> meraki.DashboardAPI:
     if api_key is None:
+        from merakisync.exceptions import MissingConfigError
         conf = get_config()
+        if conf.meraki_api_key is None:
+            raise MissingConfigError(
+                "Meraki API key is not configured. Run `merakisync init --meraki`."
+            )
         api_key = conf.meraki_api_key
     return _get_cached_dashboard(api_key)
 

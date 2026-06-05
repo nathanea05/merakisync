@@ -27,7 +27,13 @@ def get_engine(dsn: str | None = None) -> Engine:
     if dsn is None:
         # Import here to avoid a circular dependency at module load time.
         from merakisync.config import get_config
-        dsn = get_config().db.get_dsn()
+        from merakisync.exceptions import MissingConfigError
+        conf = get_config()
+        if conf.db is None:
+            raise MissingConfigError(
+                "Database is not configured. Run `merakisync init --database`."
+            )
+        dsn = conf.db.get_dsn()
 
     return create_engine(
         dsn,

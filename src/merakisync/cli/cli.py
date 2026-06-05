@@ -45,7 +45,15 @@ def _build_parser() -> argparse.ArgumentParser:
     # init
     init_parser = subparsers.add_parser(
         "init",
-        help="Configure the Meraki API key and database connection.",
+        help="Configure the Meraki API key and/or database connection.",
+    )
+    init_parser.add_argument(
+        "--meraki", action="store_true", default=False,
+        help="Configure Meraki API key only (preserve existing database settings).",
+    )
+    init_parser.add_argument(
+        "--database", action="store_true", default=False,
+        help="Configure database connection only (preserve existing Meraki API key).",
     )
     _add_log_flags(init_parser)
 
@@ -123,7 +131,9 @@ def main() -> None:
 
     if args.command == "init":
         from merakisync.cli.cmd_init import run
-        run()
+        configure_meraki = args.meraki or not args.database
+        configure_database = args.database or not args.meraki
+        run(configure_meraki=configure_meraki, configure_database=configure_database)
         return
 
     if args.command == "migrate":
@@ -132,15 +142,24 @@ def main() -> None:
         return
 
     if args.command == "sync":
-        # Require a valid config before attempting any sync
-        from merakisync.exceptions import MissingConfigError
         import logging
+        from merakisync.config import get_config
+        from merakisync.exceptions import MissingConfigError
         log = logging.getLogger(__name__)
         try:
-            from merakisync.config import get_config
-            get_config()
+            conf = get_config()
         except MissingConfigError as exc:
             log.error("%s", exc)
+            sys.exit(1)
+        if conf.meraki_api_key is None:
+            log.error(
+                "Meraki API key is not configured. Run `merakisync init --meraki`."
+            )
+            sys.exit(1)
+        if conf.db is None:
+            log.error(
+                "Database is not configured. Run `merakisync init --database`."
+            )
             sys.exit(1)
 
         from merakisync.cli.cmd_sync import run

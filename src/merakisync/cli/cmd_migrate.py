@@ -6,6 +6,16 @@ import sys
 logger = logging.getLogger(__name__)
 
 
+def _check_db_configured() -> None:
+    from merakisync.config import get_config
+    from merakisync.exceptions import MissingConfigError
+    conf = get_config()
+    if conf.db is None:
+        raise MissingConfigError(
+            "Database is not configured. Run `merakisync init --database`."
+        )
+
+
 def run(revision: str = "head") -> None:
     """Run Alembic migrations up to *revision* (default: head).
 
@@ -17,6 +27,13 @@ def run(revision: str = "head") -> None:
         - Pip install: importlib.resources resolves to site-packages/
         - PyInstaller frozen binary: data files are extracted to sys._MEIPASS
     """
+    try:
+        from merakisync.exceptions import MissingConfigError
+        _check_db_configured()
+    except MissingConfigError as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
+
     try:
         import pathlib
         from alembic import command

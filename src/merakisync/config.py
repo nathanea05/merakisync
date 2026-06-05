@@ -43,29 +43,31 @@ class DbConfig:
 
 @dataclass(frozen=True)
 class Configuration:
-    meraki_api_key: str
-    db: DbConfig
+    meraki_api_key: str | None = None
+    db: DbConfig | None = None
 
     @classmethod
-    def from_parts(cls, api_key: str, db: DbConfig) -> Configuration:
-        api_key = api_key.strip()
-        if not api_key:
-            raise ValueError("Meraki API key cannot be empty")
+    def from_parts(cls, api_key: str | None = None, db: DbConfig | None = None) -> Configuration:
+        if api_key is not None:
+            api_key = api_key.strip() or None
         return cls(meraki_api_key=api_key, db=db)
 
     @classmethod
     def from_toml(cls, data: dict) -> Configuration:
-        api_key = data["meraki"]["api_key"]
-        d = data["database"]
-        db = DbConfig(
-            host=d["host"],
-            port=int(d["port"]),
-            name=d["name"],
-            user=d["user"],
-            password=d["password"],
-        )
-        if not api_key:
-            raise ValueError("Meraki API key cannot be empty")
+        meraki_section = data.get("meraki", {})
+        api_key: str | None = meraki_section.get("api_key") or None
+
+        db: DbConfig | None = None
+        d = data.get("database")
+        if d:
+            db = DbConfig(
+                host=d["host"],
+                port=int(d["port"]),
+                name=d["name"],
+                user=d["user"],
+                password=d["password"],
+            )
+
         return cls(meraki_api_key=api_key, db=db)
 
 
@@ -90,6 +92,11 @@ def get_save_path() -> Path:
 def get_config() -> Configuration:
     """Load configuration from the TOML file, then overlay any env vars set.
 
+    Returns a Configuration where either or both fields may be None if only
+    a partial configuration is present. Callers that require a specific field
+    (e.g. the sync command) should check the field and raise with a clear
+    message if it is absent.
+
     Environment variable overrides (all optional):
         MERAKI_API_KEY
         MERAKISYNC_DB_HOST
@@ -99,8 +106,8 @@ def get_config() -> Configuration:
         MERAKISYNC_DB_PASSWORD
 
     Raises:
-        MissingConfigError: if the config file is absent and env vars do not
-            provide a complete configuration.
+        MissingConfigError: only when no config file exists and no relevant
+            environment variables are set at all.
     """
     path = get_save_path()
 
@@ -108,15 +115,18 @@ def get_config() -> Configuration:
         with open(path, "rb") as f:
             data = tomllib.load(f)
         conf = Configuration.from_toml(data)
-        api_key: str = conf.meraki_api_key
+        api_key: str | None = conf.meraki_api_key
         db: DbConfig | None = conf.db
     else:
-        api_key = ""
+        api_key = None
         db = None
 
     # Overlay env vars over file values
-    api_key = os.getenv("MERAKI_API_KEY", api_key).strip()
+    env_api_key = os.getenv("MERAKI_API_KEY", "").strip()
+    if env_api_key:
+        api_key = env_api_key
 
+    env_db_host = os.getenv("MERAKISYNC_DB_HOST", "")
     if db is not None:
         db = DbConfig(
             host=os.getenv("MERAKISYNC_DB_HOST", db.host),
@@ -125,24 +135,19 @@ def get_config() -> Configuration:
             user=os.getenv("MERAKISYNC_DB_USER", db.user),
             password=os.getenv("MERAKISYNC_DB_PASSWORD", db.password),
         )
-    else:
-        # No file — attempt to build entirely from env vars
-        host = os.getenv("MERAKISYNC_DB_HOST", "")
+    elif env_db_host:
+        # No file DB section — attempt to build entirely from env vars
         port_str = os.getenv("MERAKISYNC_DB_PORT", "5432")
         name = os.getenv("MERAKISYNC_DB_NAME", "")
         user = os.getenv("MERAKISYNC_DB_USER", "")
         password = os.getenv("MERAKISYNC_DB_PASSWORD", "")
-        if host and name and user and password:
-            db = DbConfig(host=host, port=int(port_str), name=name, user=user, password=password)
-        else:
-            raise MissingConfigError(
-                "No configuration found. Run `merakisync init` or set the "
-                "MERAKI_API_KEY and MERAKISYNC_DB_* environment variables."
-            )
+        if name and user and password:
+            db = DbConfig(host=env_db_host, port=int(port_str), name=name, user=user, password=password)
 
-    if not api_key:
+    if api_key is None and db is None:
         raise MissingConfigError(
-            "Meraki API key is missing. Run `merakisync init` or set MERAKI_API_KEY."
+            "No configuration found. Run `merakisync init` or set the "
+            "MERAKI_API_KEY and MERAKISYNC_DB_* environment variables."
         )
 
     return Configuration(meraki_api_key=api_key, db=db)
@@ -155,15 +160,22 @@ def get_config() -> Configuration:
 def write_config(path: Path, *, conf: Configuration) -> None:
     """Write configuration to *path* as TOML with mode 0600.
 
+    Only sections whose corresponding field is not None are written.
+
     Raises:
         ConfigWriteError: on permission or OS errors.
     """
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # port is written as an integer (no quotes) so tomllib reads it back as int
-        content = (
+    sections: list[str] = []
+
+    if conf.meraki_api_key is not None:
+        sections.append(
             "[meraki]\n"
-            f'api_key = "{conf.meraki_api_key}"\n\n'
+            f'api_key = "{conf.meraki_api_key}"\n'
+        )
+
+    if conf.db is not None:
+        # port is written as an integer (no quotes) so tomllib reads it back as int
+        sections.append(
             "[database]\n"
             f'host = "{conf.db.host}"\n'
             f"port = {conf.db.port}\n"
@@ -171,6 +183,11 @@ def write_config(path: Path, *, conf: Configuration) -> None:
             f'user = "{conf.db.user}"\n'
             f'password = "{conf.db.password}"\n'
         )
+
+    content = "\n".join(sections)
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         path.chmod(0o600)
     except PermissionError as exc:

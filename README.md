@@ -166,6 +166,8 @@ ALTER ROLE merakisync IN DATABASE merakisync
 
 ## Configuration
 
+> **Setting up a scheduled sync?** If you're deploying merakisync as a system service under a dedicated account — the recommended production setup — skip ahead to [Setting up a service account](#setting-up-a-service-account). That section covers binary installation, `init`, and migrations all in one place under the service account. You do not need to run `merakisync init` as your own user first.
+
 Run the interactive setup wizard:
 
 ```bash
@@ -373,12 +375,20 @@ sudo chown merakisync:merakisync /var/log/merakisync.log
 
 > **Requires the Python library install** (`pip install merakisync`). The binary does not expose importable objects.
 
-Once data has been synced, you can retrieve typed Python objects in any script without configuring API or database credentials again.
+merakisync works with whichever connections you have available. You do not need both a Meraki API key and a database — configure only what you need:
+
+| What you have | What you can do |
+|---|---|
+| **Meraki API key only** | Fetch typed objects directly from the Dashboard (`source="meraki"`). No database required. Useful for one-off scripts and tools that don't need persistence. |
+| **Database only** | Query typed objects synced by another process or another team (`source="database"`). No API key required. Useful when you have read access to a shared merakisync database but no Dashboard credentials. |
+| **Both** | Full functionality — run syncs to populate the database and query historical data from it. |
+
+Configure your available credentials via the [config file or environment variables](#environment-variables) and merakisync will use what is present.
 
 ```python
 from merakisync import Organization, Network, Device, Uplink, Switchport
 
-# Retrieve from the database (default)
+# Retrieve from the database (default) — no API key needed
 orgs = Organization.get(source="database")
 
 networks = Network.get(org_id="123456", source="database")
@@ -390,7 +400,7 @@ switch_networks = Network.get(
     product_types_include=["switch"],
 )
 
-# Retrieve directly from the Meraki Dashboard API
+# Retrieve directly from the Meraki Dashboard API — no database needed
 devices = Device.get(org_id="123456", source="meraki")
 
 # Retrieve switchports for a specific device

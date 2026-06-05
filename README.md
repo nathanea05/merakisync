@@ -63,10 +63,16 @@ The binary provides the full CLI: `merakisync init`, `merakisync migrate`, and `
 
 **Updating the binary**
 
-Re-run the same install command. It overwrites the binary in place — no service restart required. After updating, run `merakisync migrate` to apply any new database migrations before the next sync runs.
+Run the built-in update command. It downloads the latest binary, installs it in place, and applies any new database migrations in one step:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.sh | sh
+merakisync update
+```
+
+No service restart is required. If you need to pin to a specific version, use the manual flow instead:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/nathanea05/merakisync/main/install.sh | sh -s -- --version v1.0.0
 merakisync migrate
 ```
 

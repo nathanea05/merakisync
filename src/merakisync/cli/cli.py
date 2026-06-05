@@ -57,6 +57,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_log_flags(init_parser)
 
+    # update
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Download the latest binary and apply database migrations.",
+    )
+    _add_log_flags(update_parser)
+
     # migrate
     migrate_parser = subparsers.add_parser(
         "migrate",
@@ -134,6 +141,11 @@ def main() -> None:
         configure_meraki = args.meraki or not args.database
         configure_database = args.database or not args.meraki
         run(configure_meraki=configure_meraki, configure_database=configure_database)
+        return
+
+    if args.command == "update":
+        from merakisync.cli.cmd_update import run
+        run()
         return
 
     if args.command == "migrate":

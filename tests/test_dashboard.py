@@ -1,14 +1,18 @@
 """Tests for merakisync.dashboard: create_dashboard, get_dashboard,
-validate_api_key, and reset_dashboard_cache."""
+validate_api_key, reset_dashboard_cache, and the API call counter."""
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from merakisync.dashboard import (
     DashboardDefaults,
+    _ApiCallCounter,
     create_dashboard,
+    get_api_call_count,
+    reset_api_call_count,
     reset_dashboard_cache,
     validate_api_key,
 )
@@ -18,7 +22,8 @@ from merakisync.exceptions import MerakiConnectionError
 class TestDashboardDefaults:
     def test_defaults_are_sane(self):
         d = DashboardDefaults()
-        assert d.suppress_logging is True
+        assert d.suppress_logging is False
+        assert d.inherit_logging_config is True
         assert d.print_console is False
         assert d.output_log is False
         assert d.wait_on_rate_limit is True
@@ -53,7 +58,8 @@ class TestCreateDashboard:
             mock_cls.return_value = MagicMock()
             create_dashboard("abc123")
         kw = mock_cls.call_args.kwargs
-        assert kw["suppress_logging"] is True
+        assert kw["suppress_logging"] is False
+        assert kw["inherit_logging_config"] is True
         assert kw["print_console"] is False
         assert kw["wait_on_rate_limit"] is True
         assert kw["maximum_retries"] == 20
@@ -118,3 +124,40 @@ class TestResetDashboardCache:
             reset_dashboard_cache()
             info_after = _get_cached_dashboard.cache_info()
         assert info_after.currsize == 0
+
+
+class TestApiCallCounter:
+    def setup_method(self):
+        reset_api_call_count()
+
+    def test_initial_count_is_zero(self):
+        assert get_api_call_count() == 0
+
+    def test_reset_returns_to_zero(self):
+        counter = _ApiCallCounter()
+        counter.count = 5
+        reset_api_call_count()
+        assert get_api_call_count() == 0
+
+    def test_http_method_records_are_counted(self):
+        counter = _ApiCallCounter()
+        for method in ("GET ", "POST ", "PUT ", "DELETE ", "PATCH "):
+            record = logging.LogRecord(
+                name="meraki", level=logging.INFO,
+                pathname="", lineno=0,
+                msg=f"{method}https://api.meraki.com/test",
+                args=(), exc_info=None,
+            )
+            counter.emit(record)
+        assert counter.count == 5
+
+    def test_non_http_records_are_not_counted(self):
+        counter = _ApiCallCounter()
+        for msg in ("meraki, getOrganizations - 200 OK", "Session initialized", ""):
+            record = logging.LogRecord(
+                name="meraki", level=logging.INFO,
+                pathname="", lineno=0,
+                msg=msg, args=(), exc_info=None,
+            )
+            counter.emit(record)
+        assert counter.count == 0

@@ -175,6 +175,7 @@ def main() -> None:
             sys.exit(1)
 
         from merakisync.cli.cmd_sync import run
+        from merakisync.dashboard import get_api_call_count
         flags = SyncFlags(
             organizations=args.organizations,
             networks=args.networks,
@@ -189,6 +190,7 @@ def main() -> None:
             ssids=args.ssids,
         )
         run(flags)
+        log.info("Meraki API calls this session: %d", get_api_call_count())
         return
 
 

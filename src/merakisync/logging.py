@@ -41,8 +41,11 @@ def configure_logging(verbose: bool = False, quiet: bool = False) -> None:
     root.handlers.clear()
     root.addHandler(handler)
 
-    # Keep third-party loggers quiet unless we're in debug mode
+    # Keep third-party loggers quiet unless we're in debug mode.
+    # The meraki logger is intentionally omitted here — dashboard.py sets
+    # propagate=False on it so SDK output never reaches application handlers,
+    # but we need the logger level at INFO so the API call counter can receive
+    # HTTP request records.
     if level > logging.DEBUG:
         logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
-        logging.getLogger("meraki").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)

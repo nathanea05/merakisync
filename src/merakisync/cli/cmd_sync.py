@@ -21,6 +21,7 @@ class SyncFlags:
     l3_firewall_rules: bool = False
     vlans: bool = False
     ssids: bool = False
+    appliance_malware: bool = False
 
     @property
     def sync_all(self) -> bool:
@@ -51,6 +52,7 @@ def run(flags: SyncFlags | None = None) -> None:
     from merakisync.models.l3_firewall_rule import L3FirewallRule
     from merakisync.models.vlan import Vlan
     from merakisync.models.ssid import Ssid
+    from merakisync.models.appliance_malware import ApplianceMalware
 
     do_all = flags.sync_all
 
@@ -114,7 +116,8 @@ def run(flags: SyncFlags | None = None) -> None:
         # Networks → per-network resources
         # --------------------------------------------------------------
         need_networks = do_all or flags.networks or flags.dhcp_server_policy \
-            or flags.l3_firewall_rules or flags.vlans or flags.ssids
+            or flags.l3_firewall_rules or flags.vlans or flags.ssids \
+            or flags.appliance_malware
 
         if not need_networks:
             continue
@@ -163,5 +166,12 @@ def run(flags: SyncFlags | None = None) -> None:
             if (do_all or flags.ssids) and "wireless" in product_types:
                 logger.debug("    Syncing SSIDs for network %s (%s)...", net_id, net_name)
                 Ssid.sync(net_id)
+
+            # ----------------------------------------------------------
+            # Appliance malware settings  (appliance networks only)
+            # ----------------------------------------------------------
+            if (do_all or flags.appliance_malware) and "appliance" in product_types:
+                logger.debug("    Syncing appliance malware for network %s (%s)...", net_id, net_name)
+                ApplianceMalware.sync(net_id)
 
     logger.info("Sync complete.")

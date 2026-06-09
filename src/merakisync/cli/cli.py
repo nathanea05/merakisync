@@ -119,6 +119,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sync_parser.add_argument(
         "--ssids", action="store_true", help="Sync wireless SSIDs."
     )
+    sync_parser.add_argument(
+        "--appliance-malware", action="store_true", dest="appliance_malware",
+        help="Sync MX appliance malware prevention settings."
+    )
 
     return parser
 
@@ -188,6 +192,7 @@ def main() -> None:
             l3_firewall_rules=args.l3_firewall_rules,
             vlans=args.vlans,
             ssids=args.ssids,
+            appliance_malware=args.appliance_malware,
         )
         run(flags)
         log.info("Meraki API calls this session: %d", get_api_call_count())

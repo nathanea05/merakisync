@@ -55,6 +55,12 @@ def run() -> None:
         os.unlink(tmp_path)
 
     logger.info("Applying database migrations...")
-    migrate = subprocess.run([binary_path, "migrate"])
-    if migrate.returncode != 0:
-        sys.exit(migrate.returncode)
+    try:
+        os.execv(binary_path, [binary_path, "migrate"])
+    except OSError as exc:
+        logger.error(
+            "Failed to exec newly installed binary for migrations: %s\n"
+            "Run migrations manually:  merakisync migrate",
+            exc,
+        )
+        sys.exit(1)

@@ -134,6 +134,17 @@ def run(flags: SyncFlags | None = None) -> None:
 
         logger.info("  Found %d network(s) in org %s (%s).", len(networks), org_id, org.name)
 
+        if do_all or flags.dhcp_server_policy:
+            logger.info("  Syncing DHCP server policy for org %s (%s)...", org_id, org.name)
+        if do_all or flags.l3_firewall_rules:
+            logger.info("  Syncing L3 firewall rules for org %s (%s)...", org_id, org.name)
+        if do_all or flags.vlans:
+            logger.info("  Syncing VLANs for org %s (%s)...", org_id, org.name)
+        if do_all or flags.ssids:
+            logger.info("  Syncing SSIDs for org %s (%s)...", org_id, org.name)
+        if do_all or flags.appliance_malware:
+            logger.info("  Syncing appliance malware for org %s (%s)...", org_id, org.name)
+
         for network in networks:
             net_id = network.id
             net_name = network.name
@@ -157,7 +168,7 @@ def run(flags: SyncFlags | None = None) -> None:
             # VLANs  (appliance networks only)
             # ----------------------------------------------------------
             if (do_all or flags.vlans) and "appliance" in product_types:
-                logger.info("    Syncing VLANs for network %s (%s)...", net_id, net_name)
+                logger.debug("    Syncing VLANs for network %s (%s)...", net_id, net_name)
                 Vlan.sync(net_id)
 
             # ----------------------------------------------------------

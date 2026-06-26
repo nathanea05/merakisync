@@ -42,6 +42,7 @@ def _mock_models(orgs=None, networks=None):
         "L3FirewallRule": "merakisync.models.l3_firewall_rule.L3FirewallRule",
         "Vlan":          "merakisync.models.vlan.Vlan",
         "Ssid":          "merakisync.models.ssid.Ssid",
+        "DeviceLldpCdp": "merakisync.models.device_lldp_cdp.DeviceLldpCdp",
     }
     active_patches = []
     for name, target in patches.items():
@@ -66,6 +67,7 @@ def _mock_models(orgs=None, networks=None):
     mocks["L3FirewallRule"].sync.return_value = []
     mocks["Vlan"].sync.return_value = []
     mocks["Ssid"].sync.return_value = []
+    mocks["DeviceLldpCdp"].sync.return_value = []
 
     return mocks, active_patches
 

@@ -123,6 +123,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--appliance-malware", action="store_true", dest="appliance_malware",
         help="Sync MX appliance malware prevention settings."
     )
+    sync_parser.add_argument(
+        "--lldp-cdp", action="store_true", dest="lldp_cdp",
+        help="Sync per-device CDP and LLDP neighbor data."
+    )
 
     return parser
 
@@ -193,6 +197,7 @@ def main() -> None:
             vlans=args.vlans,
             ssids=args.ssids,
             appliance_malware=args.appliance_malware,
+            lldp_cdp=args.lldp_cdp,
         )
         run(flags)
         log.info("Meraki API calls this session: %d", get_api_call_count())

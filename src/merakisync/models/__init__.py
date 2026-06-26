@@ -10,6 +10,7 @@ from merakisync.models.l3_firewall_rule import L3FirewallRule
 from merakisync.models.vlan import Vlan
 from merakisync.models.ssid import Ssid
 from merakisync.models.appliance_malware import ApplianceMalware
+from merakisync.models.device_lldp_cdp import DeviceLldpCdp
 
 __all__ = [
     "Organization",
@@ -24,4 +25,5 @@ __all__ = [
     "Vlan",
     "Ssid",
     "ApplianceMalware",
+    "DeviceLldpCdp",
 ]

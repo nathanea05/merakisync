@@ -22,6 +22,7 @@ class SyncFlags:
     vlans: bool = False
     ssids: bool = False
     appliance_malware: bool = False
+    lldp_cdp: bool = False
 
     @property
     def sync_all(self) -> bool:
@@ -53,6 +54,7 @@ def run(flags: SyncFlags | None = None) -> None:
     from merakisync.models.vlan import Vlan
     from merakisync.models.ssid import Ssid
     from merakisync.models.appliance_malware import ApplianceMalware
+    from merakisync.models.device_lldp_cdp import DeviceLldpCdp
 
     do_all = flags.sync_all
 
@@ -111,6 +113,13 @@ def run(flags: SyncFlags | None = None) -> None:
         if do_all or flags.switchports:
             logger.info("  Syncing switchports for org %s (%s)...", org_id, org.name)
             Switchport.sync(org_id)
+
+        # --------------------------------------------------------------
+        # CDP/LLDP  (org-level, iterates per-device internally)
+        # --------------------------------------------------------------
+        if do_all or flags.lldp_cdp:
+            logger.info("  Syncing CDP/LLDP neighbors for org %s (%s)...", org_id, org.name)
+            DeviceLldpCdp.sync(org_id)
 
         # --------------------------------------------------------------
         # Networks → per-network resources

@@ -239,6 +239,8 @@ merakisync sync --alerts
 merakisync sync --l3-firewall-rules
 merakisync sync --vlans
 merakisync sync --ssids
+merakisync sync --appliance-malware
+merakisync sync --lldp-cdp
 ```
 
 Flags can be combined. For example, to sync only networks and devices:
@@ -491,6 +493,8 @@ Environment variables take precedence over values in the config file.
 | L3FirewallRule | `meraki.l3_firewall_rule` | Per-network | MX appliance networks |
 | Vlan | `meraki.vlan` | Per-network | MX appliance networks |
 | Ssid | `meraki.ssid` | Per-network | Wireless networks only |
+| ApplianceMalware | `meraki.appliance_malware` | Per-network | MX appliance networks |
+| DeviceLldpCdp | `meraki.device_lldp_cdp` | Per-device | CDP and LLDP neighbor data; one row per port per device |
 
 All resources except `UplinkUsage` use SCD2 versioning — historical state is preserved when data changes. `UplinkUsage` stores cumulative monthly byte totals and updates in place.
 
